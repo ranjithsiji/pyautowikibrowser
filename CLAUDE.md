@@ -6,6 +6,14 @@ Windows, usable on all ~360 Wikipedia languages including RTL (Arabic, Hebrew, P
 
 ## Stack decision: Python + PySide6 + `regex` (decided 2026-10-12, do not change without discussion)
 
+Editor decided the same day, after weighing a full HTML UI (pywebview, Qt WebEngine), Rust/Tauri again (Tauri
+uses Chromium/WebView2 on Windows and cannot use Gecko; Gecko cannot be embedded at all) and CodeMirror 6:
+Chromium has real display bugs with some complex scripts, so the editor and diff use Qt's own text engine.
+Qt-native `QPlainTextEdit` editor with a toolbar built from WikiEditor's layout and translations; wikitext
+highlighting by a Python tokenizer (CodeMirror's MediaWiki mode as reference for token rules); native diff.
+Things that need a full browser engine (Parsoid preview, the wiki's VisualEditor) open in the user's default
+browser (Firefox where installed). An embedded Qt WebEngine (Chromium) preview is an optional setting only.
+
 Chosen after measuring Python, Rust, PCRE2 (Qt C++) and JavaScript against AWB's real rules.
 .NET was excluded by the project owner. Raw results are summarised here; the scripts were throwaway.
 
@@ -37,6 +45,7 @@ Why Python wins:
 | `.../AWB/Extras/` | DBScanner, Regex Tester, CheckPage Converter, packager | Later tools |
 | `.../TypoScan/`, `.../UsageStats/`, `.../Web/` | PHP server side, project website | Server protocols only; not ported |
 | `.../tags/`, `.../branches/` | Old releases | Ignore |
+| `/home/alphad13/Projects/mediawiki-extensions-WikiEditor` | MediaWiki WikiEditor (JS, GPL-2.0-or-later, 2026-10) | Editor toolbar: layout and `encapsulate` actions (`modules/jquery.wikiEditor.toolbar.config.js`), dialogs, translations in 273 languages (`i18n/`) |
 | `/home/alphad13/Projects/huggle3-qt-lx` | Huggle 3 (Qt C++, GPL-3.0) | Qt desktop patterns, packaging for 3 OSes |
 | wAwB gadget (`en.wikipedia.org/wiki/User:Ponor/wAwB`, JS, GPL) | In-browser AWB-like tool | Server-side diff/preview, protected regions, timed rule runs |
 
@@ -49,12 +58,14 @@ Key AWB sources: `WikiFunctions/Parse/*` (general fixes, ~15k lines), `WikiFunct
 |---|---|
 | Language | Python 3.12+, fully type-annotated, `pyright` strict on `core/` |
 | Env and deps | `uv` (`pyproject.toml`, `uv.lock`) |
-| UI | PySide6 (Qt 6 Widgets, LGPL). Not QML |
-| Look and feel | Fusion style forced on every OS + one QSS stylesheet with light/dark colour tokens (`awb_l.ui.theme`, `ui/styles/app.qss`). No per-widget inline styles; QSS rules stay direction-neutral for RTL. Fonts stay OS-provided for script coverage |
+| UI | PySide6 (Qt 6 Widgets, LGPL) for lists, toolbars, menus, options, dialogs. Not QML |
+| Look and feel | Fusion style forced on every OS + one QSS stylesheet with light/dark colour tokens (`awb_l.ui.theme`). Rules stay direction-neutral for RTL. Fonts stay OS-provided for script coverage |
+| Wikitext editor | `QPlainTextEdit` + `QSyntaxHighlighter` fed by a Python wikitext tokenizer (pure, tested, outside `ui/`). Avoid QScintilla (weak bidi) and browser editors (Chromium complex-script bugs). Editor actions are Python functions over (text, selection) with unit tests; Qt only passes selection in and out |
+| Editor toolbar | Built from data converted once from WikiEditor's toolbar config (sections, groups, tools, `encapsulate` actions, special characters from MediaWiki core); labels from WikiEditor's `i18n/` (273 languages); `encapsulate` semantics ported from core's `jquery.textSelection` |
+| Visual editing | "Visual" button opens the wiki's own VisualEditor (`?veaction=edit`) in the default browser. No embedded VisualEditor, no tiptap/ProseMirror (cannot round-trip wikitext) |
 | Regex | `regex` module only, through `awb_l.core.rx`. Never import `re` for rule matching |
 | Wiki API | pywikibot behind a thin `awb_l.api` wrapper, configured in code (no `user-config.py`) |
-| Diff and preview | MediaWiki `action=compare` (`totext-main`) and `action=parse`, shown in `QWebEngineView` (the wAwB approach). Local `difflib` fallback when offline |
-| Wikitext editor | `QPlainTextEdit` + `QSyntaxHighlighter`. Avoid QScintilla: its bidi support is weak |
+| Diff and preview | Diff in native Qt widgets (word-level, from `difflib` or `action=compare`). Parsoid/`action=parse` preview opens in the default browser; optional embedded `QWebEngineView` preview as a setting |
 | Custom modules | Python functions `(text, title, vars) -> text`, run in a worker with a timeout |
 | Plugins | Python entry points (`awb_l.plugins` group) with a typed hook API |
 | Settings | TOML/JSON project files; importer for old AWB settings XML |
@@ -115,8 +126,9 @@ tests/
    users; keep version checks. Do not copy wAwB's "allow if >500 edits when no CheckPage" fallback without discussion.
 7. **Be a polite API client.** Descriptive `User-Agent`, `maxlag`, `assert=user`, `baserevid` on save,
    respect throttles. All calls go through `awb_l.api`.
-8. **Protected regions.** Hide comments/nowiki/math/pre/etc. before rules run and restore after, using
-   Private Use Area placeholders (as AWB and wAwB do). Verify placeholders never survive into saved text.
+8. **Protected regions.** Hide comments/nowiki/math/pre/etc. before rules run and restore after, with
+   `core.parsers.hidetext.HideText`. Placeholders are AWB's exact `⌊⌊⌊⌊n⌋⌋⌋⌋` / `⌊⌊⌊⌊Mn⌋⌋⌋⌋` markers, because
+   ported WikiRegexes patterns match them. Verify placeholders never survive into saved text.
 9. Keep GPL headers and credit original authors in ported files.
 
 ## Porting conventions
@@ -162,6 +174,6 @@ Run tests and pyright before calling any task done.
 3. Port `WikiRegexes` (done: `RegexTests.cs` passes unchanged), `Tools` (done: `ToolsTests.cs` passes;
    3 .NET/UI-only tests skipped), then `Parse/*` with their tests (next: `HideText.cs`, then `Parsers.cs`).
 4. `api/`: login, CheckPage, siteinfo, fetch/save, scheduler; `lists/` via pagegenerators.
-5. UI MVP: list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
+5. UI MVP (Qt widgets, Qt-native editor with WikiEditor toolbar): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
 6. Settings import, custom Python modules, plugins.
 7. Packaging, auto-update, translatewiki.net integration.

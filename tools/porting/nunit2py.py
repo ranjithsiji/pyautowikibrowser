@@ -9,9 +9,13 @@ from cs2py import pylit  # noqa
 
 NAMES = json.load(open(sys.argv[3]))  # {"static": [...], "site": [...]}
 STATIC, SITE = set(NAMES["static"]), set(NAMES["site"])
-NS = {"Article": "ARTICLE", "User": "USER", "UserTalk": "USER_TALK", "File": "FILE", "Project": "PROJECT",
-      "Media": "MEDIA", "Category": "CATEGORY", "Template": "TEMPLATE", "Talk": "TALK", "Special": "SPECIAL",
-      "Help": "HELP", "Portal": "PORTAL", "MediaWiki": "MEDIAWIKI", "Module": "MODULE", "Draft": "DRAFT"}
+_NS_CONSTANTS = ["MEDIA", "SPECIAL", "ARTICLE", "TALK", "USER", "USER_TALK", "PROJECT", "PROJECT_TALK",
+    "FILE", "FILE_TALK", "MEDIAWIKI", "MEDIAWIKI_TALK", "TEMPLATE", "TEMPLATE_TALK", "HELP", "HELP_TALK",
+    "CATEGORY", "CATEGORY_TALK", "PORTAL", "PORTAL_TALK", "DRAFT", "DRAFT_TALK", "MOS", "MOS_TALK",
+    "TIMEDTEXT", "TIMEDTEXT_TALK", "MODULE", "MODULE_TALK", "EVENT", "EVENT_TALK"]
+NS = {c.replace("_", "").lower(): c for c in _NS_CONSTANTS}
+NS.update({"mainspace": "ARTICLE", "image": "FILE", "imagetalk": "FILE_TALK",
+           "firstcustom": "PORTAL", "firstcustomtalk": "PORTAL_TALK"})
 OPTS = {"IgnoreCase": "IGNORE_CASE", "Multiline": "MULTILINE", "Singleline": "SINGLELINE",
         "ExplicitCapture": "EXPLICIT_CAPTURE", "RightToLeft": "RIGHT_TO_LEFT", "None": "NONE"}
 
@@ -59,6 +63,10 @@ class E:
         if self.peek()[1] in ("=", "!") and self.peek(1)[1] == "=":
             op = "==" if self.take()[1] == "=" else "!="; self.take()
             a = f"{a} {op} {self.add()}"
+        elif self.peek()[1] in ("<", ">"):
+            op = self.take()[1]
+            if self.peek()[1] == "=": self.take(); op += "="
+            a = f"{a} {op} {self.add()}"
         return a
     def add(self):
         a = self.unary()
@@ -90,13 +98,19 @@ class E:
             if prop == "Success": return f"{code}.group_success({key})"
             if prop == "Index": return f"{code}.start({key})"
             raise Unsupported("Groups." + prop)
-        simple = {"Value": "value", "Success": "success", "Index": "index", "Length": "length"}
+        if name == "Length": return f"cs_len({code})"
+        simple = {"Value": "value", "Success": "success", "Index": "index"}
         if name in simple: return f"{code}.{simple[name]}"
         if name == "Count": return f"len({code})"
         meth = {"Add": None, "Equals": None, "Clear": None, "IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace",
                 "Contains": None, "Trim": "strip", "ToString": None, "Split": "split", "StartsWith": "startswith",
                 "EndsWith": "endswith", "Substring": None}
-        if name not in meth: raise Unsupported("member " + name)
+        if name not in meth:
+            # generic fallback: AWB method -> snake_case Python method (verified by running tests)
+            if self.peek()[1] == "(":
+                a = self.args()
+                return f"{code}.{snake(name)}({', '.join(a)})"
+            return f"{code}.{snake(name)}"
         a = self.args() if self.peek()[1] == "(" else []
         if name == "Contains": return f"({a[0]} in {code})"
         if name == "Add": return f"{code}.append({a[0]})" if len(a) == 1 else f"{code}[{a[0]}] = {a[1]}"
@@ -155,6 +169,9 @@ class E:
                 self.take("}")
                 if what == "Dictionary": return "{" + ", ".join(items) + "}"
                 return "[" + ", ".join(items) + "]"
+            if what[:1].isupper() and self.peek()[1] == "(":
+                a = self.args()
+                return self.postfix(f"{what}({', '.join(a)})")
             raise Unsupported("new " + what)
         if k == "id":
             self.take()
@@ -168,7 +185,10 @@ class E:
                 else: raise Unsupported("WikiRegexes." + name)
                 for part in filter(None, more.split(".")): code = self.member(code, part)
                 return code
-            if head == "Namespace": return f"Namespace.{NS[rest]}"
+            if head == "Namespace":
+                if rest.lower() in NS: return f"Namespace.{NS[rest.lower()]}"
+                a = self.args()
+                return self.postfix(f"namespace.{snake(rest)}({', '.join(a)})")
             if head == "RegexOptions": return f"O.{OPTS[rest]}"
             if t == "Tools.NestedTemplateRegex":
                 a = self.args(); return f"tools.nested_template_regex({', '.join(a)})"
@@ -201,6 +221,9 @@ class E:
                 code = base
                 for m in members: code = self.member(code, m)
                 return code
+            if self.peek()[1] == "(" and t[:1].isupper():
+                a = self.args()
+                return f"{snake(t)}({', '.join(a)})"
             return t
         raise Unsupported(f"primary {t!r}")
 
@@ -237,6 +260,11 @@ def assert_that(e):
         if e.peek()[1] == "." and e.peek(1)[1] == "IgnoreCase":
             e.take(); e.take()
             cond = f"({actual}).lower() == ({exp}).lower()"
+    elif isx in ("Does.Contain", "Does.Not.Contain", "Does.StartWith", "Does.EndWith", "Is.Not.EqualTo"):
+        e.take("("); exp = e.expr(); e.take(")")
+        cond = {"Does.Contain": f"{exp} in {actual}", "Does.Not.Contain": f"{exp} not in {actual}",
+                "Does.StartWith": f"{actual}.startswith({exp})", "Does.EndWith": f"{actual}.endswith({exp})",
+                "Is.Not.EqualTo": f"{actual} != {exp}"}[isx]
     elif isx == "Is.Not.Null": cond = f"{actual} is not None"
     elif isx == "Is.Not.Empty": cond = f"len({actual}) > 0"
     elif isx == "Is.Empty": cond = f"len({actual}) == 0"
@@ -271,7 +299,7 @@ def statement(toks):
         _, name = e.take(); e.take("="); out = f"{name} = {e.expr()}"
     elif t == "string" and e.peek(1)[1] == "[]" and e.peek(3)[1] == "=":
         e.take(); e.take(); _, name = e.take(); e.take("="); out = f"{name} = {e.expr()}"
-    elif t in ("string", "var", "Regex", "int", "bool", "Match") and e.peek(1)[0] == "id" and e.peek(2)[1] == "=":
+    elif e.peek(1)[0] == "id" and e.peek(2)[1] == "=" and e.peek(3)[1] != "=":
         e.take(); _, name = e.take(); e.take("="); out = f"{name} = {e.expr()}"
         while e.peek()[1] == ",":
             e.take(); _, name = e.take(); e.take("="); out += f"\n{name} = {e.expr()}"
@@ -283,8 +311,8 @@ def statement(toks):
         out = f"S = set_site(interwiki_languages=frozenset({e.expr()}))"
     elif k == "id" and e.peek(1)[1] == "=" and e.peek(2)[1] != "=":
         e.take(); e.take("="); out = f"{t} = {e.expr()}"
-    elif k == "id" and (t.endswith(".Add") or t.endswith(".Clear") or t.startswith("Tools.")):
-        out = e.expr()
+    elif k == "id" and (e.peek(1)[1] == "(" or "." in t):
+        out = e.expr()  # expression statement, e.g. a helper call
     else:
         raise Unsupported(f"statement {toks[:4]}")
     if e.i != len(e.t): raise Unsupported(f"trailing {e.t[e.i:e.i+4]}")
@@ -294,8 +322,33 @@ def main():
     src = open(sys.argv[1], encoding="utf-8-sig", newline="").read()
     # drop preprocessor lines (#if DEBUG blocks are kept: AWB's tests run in DEBUG)
     src = re.sub(r"^\s*#(if|endif|else|region|endregion)\b.*$", "", src, flags=re.M)
+    if len(sys.argv) > 4:
+        # only the named test class
+        start = src.index(f"class {sys.argv[4]}")
+        nxt = src.find("[TestFixture]", start)
+        src = src[start: nxt if nxt > 0 else len(src)]
     toks = tokens(src)
     out = []
+    # class-level constants (e.g. "const string Caption1 = ..., Caption2 = ...;" between tests)
+    depth = 0
+    i = 0
+    consts = []
+    while i < len(toks):
+        t = toks[i][1]
+        if t == "{": depth += 1
+        elif t == "}": depth -= 1
+        elif t == "const" and depth == 1:
+            j = i + 1
+            while toks[j][1] != ";": j += 1
+            try:
+                py = statement(toks[i:j])
+                consts.append(py)
+            except Unsupported as ex:
+                print("FAILED const", ex, file=sys.stderr)
+            i = j
+        i += 1
+    if consts:
+        out.append("\n".join(consts) + "\n")
     failed = []
     i = 0
     cls = None

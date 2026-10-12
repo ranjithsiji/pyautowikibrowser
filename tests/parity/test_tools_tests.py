@@ -13,6 +13,7 @@ import pytest
 from awb_l.core import namespace, tools
 from awb_l.core import wikiregexes as W
 from awb_l.core.dotnet_regex import DotNetOptions as O
+from awb_l.core.parsers.hidetext import HideText
 from awb_l.core.parsers.parsers import DateLocale
 from awb_l.core.rx import DotNetRegex
 from awb_l.core.site import Namespace, SiteConfig
@@ -1547,7 +1548,11 @@ def test_rename_template() -> None:
     assert r(r"{{foo man<!--comm-->|here}}", "bar man") == r"{{bar man<!--comm-->|here}}"
     assert r(r"{{foo man <!--comm-->|here}}", "bar man") == r"{{bar man <!--comm-->|here}}"
     assert r("{{foo man <!--comm-->\r\n|here}}", "bar man") == "{{bar man <!--comm-->\r\n|here}}"
-    # TODO(HideText port): Hider.AddBack(RenameTemplate(Hider.Hide("{{foo man <!--comm-->|here}}"), "bar man"))
+    hider = HideText()
+    assert (
+        hider.add_back(r(hider.hide(r"{{foo man <!--comm-->|here}}"), "bar man"))
+        == r"{{bar man <!--comm-->|here}}"
+    )
     # special case of subst:, first letter case rule does not apply
     assert r(r"{{PAGENAME}}", "PAGENAME", "subst:PAGENAME") == r"{{subst:PAGENAME}}"
     assert r(r"{{PAGENAME}}", "PAGENAME", "subst:PAGENAME", False) == r"{{subst:PAGENAME}}"

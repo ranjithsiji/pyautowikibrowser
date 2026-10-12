@@ -25,3 +25,10 @@ def set_site(**changes: object) -> W.SiteRegexes:
     site = replace(current_site(), **changes)  # pyright: ignore[reportArgumentType]
     set_current_site(site)
     return W.for_site(site)
+
+
+def cs_len(x: object) -> int:
+    """C# .Length: string length, or a match's length."""
+    if isinstance(x, str):
+        return len(x)
+    return x.length  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
