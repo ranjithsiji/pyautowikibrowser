@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from awb_l.core import rx
 from awb_l.core import wikiregexes as W
 from awb_l.core.rx import DotNetMatch, DotNetRegex
-from awb_l.core.site import Namespace, SiteConfig, current_site
+from awb_l.core.site import Namespace, SiteConfig, current_site, use_site
 from awb_l.core.textutil import (
     first_letter_case_insensitive,
     nested_template_regex,
@@ -338,3 +338,17 @@ def remove_template_namespace(article_text: str) -> str:
     return r.replace(
         article_text, lambda m: m.group(1) + canonicalize_title(m.group(2)) + m.group(3)
     )
+
+
+@functools.lru_cache(maxsize=16)
+def site_template_redirects(site: SiteConfig) -> TemplateRedirectRules:
+    """The wiki's template redirect rules (from SiteConfig.template_redirects_text)."""
+    with use_site(site):
+        return load_template_redirects(site.template_redirects_text)
+
+
+@functools.lru_cache(maxsize=16)
+def site_renamed_template_parameters(site: SiteConfig) -> tuple[TemplateParameters, ...]:
+    """The wiki's renamed template parameters (from SiteConfig.renamed_template_parameters_text)."""
+    with use_site(site):
+        return tuple(load_renamed_template_parameters(site.renamed_template_parameters_text))

@@ -92,7 +92,10 @@ class E:
         self.take("(")
         out = []
         while self.peek()[1] != ")":
-            out.append(self.ref_arg() if self.peek()[1] == "ref" else self.expr())
+            if self.peek()[1] == "out":
+                self.take(); _, name = self.take(); self.out_args.append(name)
+            else:
+                out.append(self.ref_arg() if self.peek()[1] == "ref" else self.expr())
             if self.peek()[1] == ",": self.take(",")
         self.take(")")
         return out
@@ -133,14 +136,20 @@ class E:
             k, t = self.peek()
             if t == "." or (k == "id" and t.startswith(".")):
                 self.take("."); _, name = self.take()
-                for part in name.split("."):
-                    code = self.member(code, part)
+                code = self.members(code, name.split("."))
             elif t == "[":
                 self.take("["); idx = self.expr(); self.take("]")
                 code = f"{code}[{idx}]"
             else:
                 return code
-    def member(self, code, name):
+    def members(self, code, parts):
+        """a.B.C(...): only the last member can take the call's arguments."""
+        parts = [p for p in parts if p]
+        for i, part in enumerate(parts):
+            code = self.member(code, part, can_call=(i == len(parts) - 1))
+        return code
+
+    def member(self, code, name, can_call=True):
         if name == "Groups":
             self.take("["); key = self.expr(); self.take("]")
             self.take("."); _, prop = self.take()
@@ -150,7 +159,7 @@ class E:
             elif prop == "Index": code = f"{code}.start({key})"
             elif prop == "Length": code = f"len({code}.group({key}))"
             else: raise Unsupported("Groups." + prop)
-            for part in rest: code = self.member(code, part)
+            code = self.members(code, rest) if rest else code
             return code
         if name == "TryGetValue":  # d.TryGetValue(k, out v) -> ((v := d.get(k)) is not None)
             self.take("("); key = self.expr(); self.take(","); self.take("out"); _, var = self.take(); self.take(")")
@@ -166,11 +175,15 @@ class E:
                 "EndsWith": "endswith", "Substring": None}
         if name not in meth:
             # generic fallback: AWB method -> snake_case Python method (verified by running tests)
-            if self.peek()[1] == "(":
+            if can_call and self.peek()[1] == "(":
                 a = self.args()
-                return self.wrap_refs(f"{code}.{snake(name)}({', '.join(a)})")
+                code = self.wrap_refs(f"{code}.{snake(name)}({', '.join(a)})")
+                if self.out_args:
+                    outs, self.out_args = self.out_args, []
+                    code = self.with_outs(code, outs)
+                return code
             return f"{code}.{snake(name)}"
-        a = self.args() if self.peek()[1] == "(" else []
+        a = self.args() if can_call and self.peek()[1] == "(" else []
         if name == "Contains": return f"({a[0]} in {code})"
         if name == "Add": return f"{code}.append({a[0]})" if len(a) == 1 else f"{code}[{a[0]}] = {a[1]}"
         if name == "Equals": return f"({code} == {a[0]})"
@@ -206,11 +219,6 @@ class E:
             if what == "Regex":
                 a = self.args()
                 return f"DotNetRegex({', '.join(a)})"
-            if what == "Article" and self.peek()[1] == "(":
-                a = self.args()
-                if len(a) == 1:  # new Article(title) where a title is all that is used
-                    return a[0]
-                return self.postfix(f"Article({', '.join(a)})")
             if what == "Parsers":
                 a = self.args(); return self.postfix(f"genfixes.Parsers({', '.join(a)})")
             if what in ("List", "Dictionary", "HashSet"):
@@ -252,7 +260,7 @@ class E:
                 if name in SITE: code = f"S.{name}"
                 elif name in STATIC: code = f"W.{name}"
                 else: raise Unsupported("WikiRegexes." + name)
-                for part in filter(None, more.split(".")): code = self.member(code, part)
+                code = self.members(code, more.split("."))
                 return code
             if t == "Regex.Escape":
                 a = self.args(); return f"rx.escape({a[0]})"
@@ -276,7 +284,7 @@ class E:
                 else:
                     a = self.args()
                     code = f"tools.{snake(name)}({', '.join(a)})"
-                for part in filter(None, more.split(".")): code = self.member(code, part)
+                code = self.members(code, more.split("."))
                 return code
             if head == "Regex" and rest in ("IsMatch", "Match", "Matches", "Replace", "Split"):
                 a = self.args()
@@ -309,7 +317,7 @@ class E:
                         code = self.with_outs(code, outs)
                 else:
                     code = f"{obj}.{snake(name)}"
-                for part in filter(None, more.split(".")): code = self.member(code, part)
+                code = self.members(code, more.split("."))
                 return self.postfix(code)
             if t.startswith("Parsers.DateLocale."):
                 return "DateLocale." + DATE_LOCALE[t.rsplit(".", 1)[1]]
@@ -321,7 +329,7 @@ class E:
                 # local.member chains
                 base, *members = t.split(".")
                 code = base
-                for m in members: code = self.member(code, m)
+                code = self.members(code, members)
                 return code
             if self.peek()[1] == "(" and t[:1].isupper():
                 a = self.args()
@@ -438,6 +446,15 @@ def statement(toks):
     elif t in ("Globals.UnitTestIntValue", "Globals.UnitTestBoolValue") and e.peek(1)[1] == "=":
         e.take(); e.take("=")
         out = f"unit_test.{'int_value' if t.endswith('IntValue') else 'bool_value'} = {e.expr()}"
+    elif t in ("WikiRegexes.TemplateRedirects.Clear", "WikiRegexes.RenamedTemplateParameters.Clear"):
+        e.take(); e.args()
+        field = "template_redirects_text" if "Redirects" in t else "renamed_template_parameters_text"
+        out = f'S = set_site({field}="")'
+    elif t in ("WikiRegexes.TemplateRedirects", "WikiRegexes.RenamedTemplateParameters") and e.peek(1)[1] == "=":
+        # AWB-L keeps the rule page text in SiteConfig and parses it on use
+        e.take(); e.take("="); e.take(); a = e.args()
+        field = "template_redirects_text" if "Redirects" in t else "renamed_template_parameters_text"
+        out = f"S = set_site({field}={a[0]})"
     elif t == "WikiRegexes.DatedTemplates.Clear":
         e.take(); e.args(); out = "S = set_site(dated_templates=())"
     elif t == "WikiRegexes.DatedTemplates.Add":

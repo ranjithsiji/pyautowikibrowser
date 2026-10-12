@@ -57,3 +57,10 @@ def set_project(lang_code: str, project: str) -> W.SiteRegexes:
         site = replace(current_site().with_lang_code(lang_code), project=project)
     set_current_site(site)
     return W.for_site(site)
+
+
+# AWB's Globals.UnitTestMode values for Tagger (Globals.UnitTestIntValue / UnitTestBoolValue),
+# installed as the default for every Parsers object by conftest.py.
+from awb_l.core.parsers.tagger import UnitTestTaggerLookups  # noqa: E402
+
+unit_test = UnitTestTaggerLookups()

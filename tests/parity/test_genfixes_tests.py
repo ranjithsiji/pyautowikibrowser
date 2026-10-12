@@ -10,7 +10,7 @@ with a comment explaining why.
 
 import pytest
 
-from awb_l.core import genfixes, namespace, tools
+from awb_l.core import genfixes, namespace, rx, tools
 from awb_l.core import wikiregexes as W
 from awb_l.core.dotnet_regex import DotNetOptions as O
 from awb_l.core.parsers.hidetext import HideText
@@ -27,9 +27,8 @@ assert_change = genFixes.assert_change  # GenfixesTestsBase methods
 assert_not_changed = genFixes.assert_not_changed
 gen_fixes = genFixes.gen_fixes
 talk_gen_fixes = genFixes.talk_gen_fixes
-Article = genFixes.article  # not ported yet: using these marks the test as an expected failure
-MockSkipOptions = genFixes.mock_skip_options
-Options = genFixes.options
+from awb_l.core.article import Article, CategorisationOptions  # noqa: E402
+from awb_l.core.article import SkipOptions as MockSkipOptions  # noqa: E402
 
 
 def test_undersore_removal_in_external_link() -> None:
@@ -48,9 +47,12 @@ def test_dablinks_html_comments() -> None:
 
 def test_only_redirect_tagger_on_redirects() -> None:
     S = W.for_site(EN)
-    ArticleText = r"#REDIRECT [[Action of 12-17 January 1640]]"
+    genFixes.article_text = r"#REDIRECT [[Action of 12-17 January 1640]]"
     gen_fixes(r"Action of 12–17 January 1640")
-    assert ArticleText == r"#REDIRECT [[Action of 12-17 January 1640]] {{R from modification}}"
+    assert (
+        genFixes.article_text
+        == r"#REDIRECT [[Action of 12-17 January 1640]] {{R from modification}}"
+    )
 
 
 def test_external_links_in_image_captions() -> None:
@@ -70,9 +72,9 @@ def test_external_links_in_image_captions() -> None:
         r"Test",
         r"Linked external link at end of image description 2",
     )
-    ArticleText = r"[[Image:foo.jpg|Some [[http://some_crap.com]]]]"
+    genFixes.article_text = r"[[Image:foo.jpg|Some [[http://some_crap.com]]]]"
     gen_fixes()
-    assert ArticleText.startswith(r"[[Image:foo.jpg|Some [http://some_crap.com]]]")
+    assert genFixes.article_text.startswith(r"[[Image:foo.jpg|Some [http://some_crap.com]]]")
 
 
 def test_link_whitespace() -> None:
@@ -182,9 +184,16 @@ def test_cite_work_link() -> None:
     assert_change(r"{{cite news|work=''[[foo|foo]]''}}", r"{{cite news|work=[[foo]]}}")
 
 
-@pytest.mark.skip(reason="not converted: Unsupported: WikiRegexes.RenamedTemplateParameters")
 def test_unbalanced_bracket_rename_template_parameter() -> None:
-    pass
+    S = W.for_site(EN)
+    S = set_site(renamed_template_parameters_text="")
+    S = set_site(
+        renamed_template_parameters_text=r"{{AWB rename template parameter|cite web|acccessdate|accessdate}}"
+    )
+    assert_change(
+        r"A.<ref>{{cite web| url=http://www.site.com | title = ABC | acccessdate = 20 May 2012</ref> {{reflist}}",
+        r"A.<ref>{{cite web| url=http://www.site.com | title = ABC | accessdate = 20 May 2012}}</ref> {{reflist}}",
+    )
 
 
 def test_unbalanced_bracket_cite() -> None:
@@ -209,9 +218,11 @@ def test_unbalanced_bracket_cite() -> None:
     )
 
 
-@pytest.mark.skip(reason="not converted: Unsupported: WikiRegexes.TemplateRedirects")
 def test_unbalanced_brackets_template_redirects() -> None:
-    pass
+    S = W.for_site(EN)
+    S = set_site(template_redirects_text="")
+    S = set_site(template_redirects_text=r"{{tl|facts}} → {{tl|citation needed}}")
+    assert_change(r"Foo.{facts}}", r"Foo.{{citation needed}}")
 
 
 def test_wikia() -> None:
@@ -236,9 +247,19 @@ def test_cite_missing_closing_curly_brace_pair_table() -> None:
     )
 
 
-@pytest.mark.skip(reason="not converted: Unsupported: WikiRegexes.TemplateRedirects")
 def test_multiple_issues() -> None:
-    pass
+    S = W.for_site(EN)
+    before = "{{Unreferenced|auto=yes|date=December 2009}}\r\n{{Underlinked|date=November 2006}}\r\n{{Notability|1=Music|date=September 2010}}\r\n{{Autobiography|date=December 2007}}\r\n'''Band''' is.\r\n\r\n[[Category:Blues rock groups]]\r\n\r\n\r\n{{Norway-band-stub}}"
+    after = "{{Multiple issues|\r\n{{Unreferenced|date=December 2009}}\r\n{{Underlinked|date=November 2006}}\r\n{{Notability|1=Music|date=September 2010}}\r\n{{Autobiography|date=December 2007}}\r\n}}\r\n\r\n'''Band''' is.\r\n\r\n[[Category:Blues rock groups]]\r\n\r\n{{Norway-band-stub}}"
+    assert_change(before, after)
+    genFixes.article_text = "{{POV|date=May 2016}}\r\n{{NPOV|date=May 2016}}\r\n{{Orphan|date=May 2016}}\r\n{{Dead end|date=May 2016}}\r\n\r\nMinor bug"
+    S = set_site(template_redirects_text="")
+    S = set_site(template_redirects_text=r"{{tl|NPOV}} → {{tl|POV}}")
+    gen_fixes(r"A")
+    assert (
+        "{{Multiple issues|\r\n{{POV|date=May 2016}}\r\n{{Orphan|date=May 2016}}\r\n{{Dead end|date=May 2016}}\r\n}}"
+        in genFixes.article_text
+    ), r"No excess pipes left when MI incorporates duplicate tags"
 
 
 def test_heading_whitespace() -> None:
@@ -256,9 +277,9 @@ def test_heading_whitespace() -> None:
 
 def test_embolden_born() -> None:
     S = W.for_site(EN)
-    ArticleText = r"John Smith (1985-) was great."
+    genFixes.article_text = r"John Smith (1985-) was great."
     gen_fixes(r"John Smith")
-    assert ArticleText == r"'''John Smith''' (born 1985) was great."
+    assert genFixes.article_text == r"'''John Smith''' (born 1985) was great."
 
 
 def test_fix_citation_templates() -> None:
@@ -287,43 +308,45 @@ def test_fix_citation_templates() -> None:
 def test_refs_punctuation_reorder() -> None:
     S = W.for_site(EN)
     S = set_project(r"en", "wikisource")
-    ArticleText = "* Andrew influences.<ref name=HerdFly>{{cite book |last=Herd |first=Andrew Dr |title=The Fly }}</ref>\r\n\r\n* Hills  works<ref>{{cite book |last=McDonald }}</ref>,<ref>{{cite book |last=Gingrich }}</ref>,<ref>{{cite book |location=Norwalk, CT }}</ref>,<ref name=HerdFly/> {{Reflist}}"
+    genFixes.article_text = "* Andrew influences.<ref name=HerdFly>{{cite book |last=Herd |first=Andrew Dr |title=The Fly }}</ref>\r\n\r\n* Hills  works<ref>{{cite book |last=McDonald }}</ref>,<ref>{{cite book |last=Gingrich }}</ref>,<ref>{{cite book |location=Norwalk, CT }}</ref>,<ref name=HerdFly/> {{Reflist}}"
     correct = "* Andrew influences.<ref name=HerdFly>{{cite book |last=Herd |first=Andrew Dr |title=The Fly }}</ref>\r\n\r\n* Hills  works,<ref name=HerdFly/><ref>{{cite book |last=McDonald }}</ref><ref>{{cite book |last=Gingrich }}</ref><ref>{{cite book |location=Norwalk, CT }}</ref> {{Reflist}}"
     gen_fixes(r"Test")
-    assert ArticleText == correct
-    ArticleText = "A<ref>ABC</REF>.\r\n\r\n==References==\r\n{{reflist}}"
+    assert genFixes.article_text == correct
+    genFixes.article_text = "A<ref>ABC</REF>.\r\n\r\n==References==\r\n{{reflist}}"
     gen_fixes(r"Test")
-    assert ArticleText == "A.<ref>ABC</ref>\r\n\r\n==References==\r\n{{reflist}}"
+    assert genFixes.article_text == "A.<ref>ABC</ref>\r\n\r\n==References==\r\n{{reflist}}"
     S = set_project(r"en", "wikipedia")
 
 
 def test_merge_refs_errors() -> None:
     S = W.for_site(EN)
-    ArticleText = "A.<ref name=”XXL Mag”>{{cite web|url=http://www.somesite.com/online/?p=70413 |title=a}}</ref><ref name=c>x</ref>\r\n\r\nB.<ref name=c />\r\nC.<ref name=”XXL Mag”>{{cite web|url=http://www.somesite.com/online/?p=70413 |title=a}}</ref>\r\n\r\n==References==\r\n{{reflist}}"
+    genFixes.article_text = "A.<ref name=”XXL Mag”>{{cite web|url=http://www.somesite.com/online/?p=70413 |title=a}}</ref><ref name=c>x</ref>\r\n\r\nB.<ref name=c />\r\nC.<ref name=”XXL Mag”>{{cite web|url=http://www.somesite.com/online/?p=70413 |title=a}}</ref>\r\n\r\n==References==\r\n{{reflist}}"
     gen_fixes(r"Test")
-    assert (r'<ref name="XXL Mag">' in ArticleText) and (r'<ref name="XXL Mag"/>' in ArticleText), (
-        r"Fix the ref quote errors, then merge them"
-    )
+    assert (r'<ref name="XXL Mag">' in genFixes.article_text) and (
+        r'<ref name="XXL Mag"/>' in genFixes.article_text
+    ), r"Fix the ref quote errors, then merge them"
 
 
 def test_ref_punctuation_spacing() -> None:
     S = W.for_site(EN)
-    ArticleText = r"Targ<ref>[http://www.site.com] Lubawskiego</ref>.It adopted {{reflist}}"
+    genFixes.article_text = (
+        r"Targ<ref>[http://www.site.com] Lubawskiego</ref>.It adopted {{reflist}}"
+    )
     gen_fixes(r"Test")
     correct = r"Targ.<ref>[http://www.site.com] Lubawskiego</ref> It adopted {{reflist}}"
-    assert ArticleText == correct
+    assert genFixes.article_text == correct
 
 
 def test_reorder_punctuation() -> None:
     S = W.for_site(EN)
     S = set_project(r"en", "wikisource")
     correct = 'FOOBAR decreases.<ref name="G">{{cite journal | author = M| title = R by p53: s}}</ref><ref name="Bensaad"/> It catalyses the removal of a phosphate group from fructose (F-2,6-BP):<ref name="G"/><ref name="B"/>\r\n\r\n==References==\r\n{{Reflist}}'
-    ArticleText = 'FOOBAR decreases<ref name="G">{{cite journal | author = M| title = R by p53: s}}</ref><ref name="Bensaad"/>. It catalyses the removal of a phosphate group from fructose (F-2,6-BP)<ref name="B"/><ref name="G"/>:\r\n\r\n==References==\r\n{{Reflist}}'
+    genFixes.article_text = 'FOOBAR decreases<ref name="G">{{cite journal | author = M| title = R by p53: s}}</ref><ref name="Bensaad"/>. It catalyses the removal of a phosphate group from fructose (F-2,6-BP)<ref name="B"/><ref name="G"/>:\r\n\r\n==References==\r\n{{Reflist}}'
     gen_fixes(r"Test")
-    assert ArticleText == correct, r"References section exists"
-    ArticleText = r'FOOBAR decreases<ref name="G">{{cite journal | author = M| title = R by p53: s}}</ref><ref name="Bensaad"/>. It catalyses the removal of a phosphate group from fructose (F-2,6-BP)<ref name="B"/><ref name="G"/>:'
+    assert genFixes.article_text == correct, r"References section exists"
+    genFixes.article_text = r'FOOBAR decreases<ref name="G">{{cite journal | author = M| title = R by p53: s}}</ref><ref name="Bensaad"/>. It catalyses the removal of a phosphate group from fructose (F-2,6-BP)<ref name="B"/><ref name="G"/>:'
     gen_fixes(r"Test")
-    assert ArticleText == correct, r"References section does not exist"
+    assert genFixes.article_text == correct, r"References section does not exist"
     S = set_project(r"en", "wikipedia")
 
 
@@ -346,7 +369,7 @@ def test_only_general_fixes_changed() -> None:
     ar1.perform_general_fixes(parser, H, S, False, False, False)
     assert ar1.only_general_fixes_changed, r"Universal genfixes made change"
     ar2 = Article(r"Category:Hello", r" Text [[Category:Foo]]")
-    ar2.categorisation((Options.categorisation_options), 1, parser, False, r"Foo", r"Foo2", False)
+    ar2.categorisation(CategorisationOptions(1), parser, False, r"Foo", r"Foo2", False)
     assert ar2.article_text == r" Text [[Category:Foo2]]", r"Category rename operation"
     ar2.perform_universal_general_fixes()
     assert ar2.article_text == r"Text [[Category:Foo2]]", r"Universal genfix trim"
@@ -356,70 +379,87 @@ def test_only_general_fixes_changed() -> None:
 
 def test_external_links_br() -> None:
     S = W.for_site(EN)
-    ArticleText = "==External links==\r\n[http://foo.com]</br>\r\n[http://foo2.com]</br>\r\n\r\n[[Category:A]]"
+    genFixes.article_text = "==External links==\r\n[http://foo.com]</br>\r\n[http://foo2.com]</br>\r\n\r\n[[Category:A]]"
     gen_fixes(r"Test")
     correct = (
         "==External links==\r\n* [http://foo.com]\r\n* [http://foo2.com]\r\n\r\n[[Category:A]]"
     )
-    assert ArticleText == correct, r"Clean br at end of lists"
-    ArticleText = "==External links==\r\n[http://foo.com]\r\n<br>\r\n[http://foo2.com]"
+    assert genFixes.article_text == correct, r"Clean br at end of lists"
+    genFixes.article_text = "==External links==\r\n[http://foo.com]\r\n<br>\r\n[http://foo2.com]"
     correct = "==External links==\r\n* [http://foo.com]\r\n* [http://foo2.com]"
     gen_fixes(r"Test")
-    assert ArticleText == correct, r"Clean br between list items"
+    assert genFixes.article_text == correct, r"Clean br between list items"
 
 
-@pytest.mark.skip(
-    reason="not converted: Unsupported: trailing [('p', '('), ('id', 'int'), ('id', 'x'), ('p', '=')]"
-)
 def test_bold_title() -> None:
-    pass
+    # Hand-ported (the for loop was not converted).
+    genFixes.article_text = "\r\n==Foo.(here)==\r\nFoo.(here) is a bar While remaining upright may be the primary goal of beginning riders"
+    gen_fixes(r"Foo.(here)")
+    assert (
+        genFixes.article_text
+        == "'''Foo.(here)''' is a bar While remaining upright may be the primary goal of beginning riders"
+    )
+
+    genFixes.article_text = (
+        "{{Short description|Japanese video game developer}}\r\n\r\n{{nihongo foot|'''Treasure Co., Ltd.'''|株式会社トレジャー|''Kabushiki-gaisha Torejā''||lead=yes|group=lower-alpha}} is a Japanese\r\nTreasure grew a [[cult following]]."
+        + "Some long test to make article long enough so 5 percent rule is relevant." * 100
+    )
+    original_article_text = genFixes.article_text
+    gen_fixes(r"Treasure (company)")
+    assert genFixes.article_text == original_article_text
 
 
 def test_redirects_simplify_links() -> None:
     S = W.for_site(EN)
-    ArticleText = r"#REDIRECT[[foo|foo]]"
+    genFixes.article_text = r"#REDIRECT[[foo|foo]]"
     gen_fixes(r"test")
-    assert ArticleText == r"#REDIRECT[[foo]]"
+    assert genFixes.article_text == r"#REDIRECT[[foo]]"
 
 
 def test_redirects_defaultsort() -> None:
     S = W.for_site(EN)
-    ArticleText = "#REDIRECT[[Foo]]\r\n[[Category:One]]"
+    genFixes.article_text = "#REDIRECT[[Foo]]\r\n[[Category:One]]"
     gen_fixes(r"Foé")
-    assert ArticleText == "#REDIRECT[[Foo]]\r\n\r\n{{DEFAULTSORT:Foe}}\r\n[[Category:One]]"
+    assert (
+        genFixes.article_text == "#REDIRECT[[Foo]]\r\n\r\n{{DEFAULTSORT:Foe}}\r\n[[Category:One]]"
+    )
 
 
 def test_cats_and_default_sort() -> None:
     S = W.for_site(EN)
-    ArticleText = "{{infobox person}}\r\n'''John Smith''' (born 11 April 1990) is great."
+    genFixes.article_text = "{{infobox person}}\r\n'''John Smith''' (born 11 April 1990) is great."
     gen_fixes(r"John Smith")
-    assert r"[[Category:1990 births]]" in ArticleText, r"birth category"
-    assert r"[[Category:Living people]]" in ArticleText, r"living people"
-    assert r"{{DEFAULTSORT:Smith, John}}" in ArticleText, r"human name defaultsort"
+    assert r"[[Category:1990 births]]" in genFixes.article_text, r"birth category"
+    assert r"[[Category:Living people]]" in genFixes.article_text, r"living people"
+    assert r"{{DEFAULTSORT:Smith, John}}" in genFixes.article_text, r"human name defaultsort"
 
 
 def test_cats_and_default_sort2() -> None:
     S = W.for_site(EN)
-    ArticleText = "{{infobox person}}\r\n'''Cecilia Uddén''' (born 11 April 1990) is great."
+    genFixes.article_text = (
+        "{{infobox person}}\r\n'''Cecilia Uddén''' (born 11 April 1990) is great."
+    )
     gen_fixes(r"Cecilia Uddén")
-    assert r"[[Category:1990 births]]" in ArticleText, r"birth category"
-    assert r"[[Category:Living people]]" in ArticleText, r"living people"
-    assert r"{{DEFAULTSORT:Udden, Cecilia}}" in ArticleText, (
+    assert r"[[Category:1990 births]]" in genFixes.article_text, r"birth category"
+    assert r"[[Category:Living people]]" in genFixes.article_text, r"living people"
+    assert r"{{DEFAULTSORT:Udden, Cecilia}}" in genFixes.article_text, (
         r"human name defaultsort without special characters"
     )
-    ArticleText = "{{infobox person}}\r\n'''İbrahim Smith''' (born 12 April 1991) is great."
+    genFixes.article_text = (
+        "{{infobox person}}\r\n'''İbrahim Smith''' (born 12 April 1991) is great."
+    )
     gen_fixes(r"İbrahim Smith")
-    assert r"{{DEFAULTSORT:Ibrahim Smith}}" in ArticleText, (
+    assert r"{{DEFAULTSORT:Ibrahim Smith}}" in genFixes.article_text, (
         r"human name defaultsort (diacritics removed)"
     )
 
 
 def test_named_and_unnamed_refs() -> None:
     S = W.for_site(EN)
-    ArticleText = 'Z<ref name = "Smith63">Smith (2004), p.&nbsp;63</ref> in all probability.<ref>Smith (2004), p.&nbsp;63</ref> For.<ref>Smith (2004), p.&nbsp;63</ref>\r\n\r\nA.<ref name="S63">Smith (2004), p.&nbsp;63</ref>\r\n\r\nGod.<ref name="S63" />\r\n\r\n==References==\r\n{{reflist|2}}'
+    genFixes.article_text = 'Z<ref name = "Smith63">Smith (2004), p.&nbsp;63</ref> in all probability.<ref>Smith (2004), p.&nbsp;63</ref> For.<ref>Smith (2004), p.&nbsp;63</ref>\r\n\r\nA.<ref name="S63">Smith (2004), p.&nbsp;63</ref>\r\n\r\nGod.<ref name="S63" />\r\n\r\n==References==\r\n{{reflist|2}}'
     gen_fixes()
     assert (
-        ArticleText
+        genFixes.article_text
         == 'Z<ref name = "Smith63">Smith (2004), p.&nbsp;63</ref> in all probability.<ref name="Smith63"/> For.<ref name="Smith63"/>\r\n\r\nA.<ref name="Smith63">Smith (2004), p.&nbsp;63</ref>\r\n\r\nGod.<ref name="Smith63"/>\r\n\r\n==References==\r\n{{reflist|2}}'
     )
 
@@ -441,99 +481,107 @@ def test_cite_url() -> None:
 
 def test_living_people() -> None:
     S = W.for_site(EN)
-    ArticleText = "{{Multiple issues|{{More citations needed|date=July 2015}}{{BLP sources|date=July 2015}}}}\r\n\r\n{{Infobox football biography\r\n| name = Am\r\n| birth_date  = 3 May 1983\r\n}}\r\n\r\n'''Amir'''  is.<ref>http://ca.soccerway.com/players/</ref>\r\n\r\n==References==\r\n<references/>\r\n\r\n{{iran-footy-bio-stub}}\r\n\r\n{{DEFAULTSORT:Amir}}\r\n[[Category:A players]]"
+    genFixes.article_text = "{{Multiple issues|{{More citations needed|date=July 2015}}{{BLP sources|date=July 2015}}}}\r\n\r\n{{Infobox football biography\r\n| name = Am\r\n| birth_date  = 3 May 1983\r\n}}\r\n\r\n'''Amir'''  is.<ref>http://ca.soccerway.com/players/</ref>\r\n\r\n==References==\r\n<references/>\r\n\r\n{{iran-footy-bio-stub}}\r\n\r\n{{DEFAULTSORT:Amir}}\r\n[[Category:A players]]"
     gen_fixes()
-    assert r"{Multiple issues" not in ArticleText
-    assert r"Category:Living people" in ArticleText
+    assert r"{Multiple issues" not in genFixes.article_text
+    assert r"Category:Living people" in genFixes.article_text
 
 
 def test_fix_syntax_images() -> None:
     S = W.for_site(EN)
     t = "Foo\r\n<Gallery>\r\nFile:T（p13 T2).jpg|\r\nFile:T（ｐ16_T3）.jpg|a\r\nFile:T（ｐ22 T5）.jpg|aa\r\n</Gallery>\r\n\r\nBar"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to unbalanced brackets in images, Chinese brackets"
+    assert t == genFixes.article_text, (
+        r"No change to unbalanced brackets in images, Chinese brackets"
+    )
     t = "Foo\r\n\r\nOther [[Image:A.png|Now [[foo]]]]\r\nBar"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to unbalanced brackets in images, simple"
+    assert t == genFixes.article_text, r"No change to unbalanced brackets in images, simple"
     t = "Foo\r\n\r\nOther [[Image:A.png|foo [[bar]] there]]\r\nBar"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to unbalanced brackets in images, simple 2"
+    assert t == genFixes.article_text, r"No change to unbalanced brackets in images, simple 2"
     t = r"[[File:Miguel.jpg|x120px|thumb|[[Miguel Enríquez (privateer)|Miguel Enríquez]]]][[File:Demetrio O'Daly.jpg|x120px|thumb|[[Demetrio O'Daly]]]] [[File:Antonio Valero Bernabe.gif|x120px|thumb|[[Antonio Valero de Bernabé]]]] [[File:Manuel Rojas drawing.jpg|x120px|thumb|[[Manuel Rojas (independence leader)|Manuel Rojas]]]] [[File:CIVILWAR,PRSOLDIERsmall2.jpg|x120px|thumb|[[Augusto Rodríguez (soldier)|Augusto Rodríguez]]]] [[File:General Juan Luis Rivera.jpg|x120px|thumb|[[Juan Ríus Rivera]]]] [[File:GenSemidei.jpg|x120px|thumb|[[José Semidei Rodríguez]]]]"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to unbalanced brackets in images, 3"
+    assert t == genFixes.article_text, r"No change to unbalanced brackets in images, 3"
     t = r"[[File:Mat.pdf|thumb|Same|link=https://en.wikipedia.org/wiki/File:Mat.pdf?page=2]]"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to brackets/images, 4"
+    assert t == genFixes.article_text, r"No change to brackets/images, 4"
     t = r"[[File:Milky way.jpg|sans_cadre|centre|Representation]]"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to underscores in image parameters"
+    assert t == genFixes.article_text, r"No change to underscores in image parameters"
 
 
 def test_fix_syntax_brackets() -> None:
     S = W.for_site(EN)
     t = "*[https://www.site.com [XXX<nowiki>]</nowiki> XXX]\r\n\r\n{{s | title=[[Party (1931)|XXX]] | before=}}"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to unbalanced brackets from nowiki"
+    assert t == genFixes.article_text, r"No change to unbalanced brackets from nowiki"
     t = r"A <nowiki>[</nowiki>[[sub-creation]]] story."
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert t == ArticleText, r"No change to unbalanced brackets from nowiki, 2"
+    assert t == genFixes.article_text, r"No change to unbalanced brackets from nowiki, 2"
 
 
 def test_reorder_references_not_en_wp() -> None:
     S = W.for_site(EN)
     t = "'''Article''' is great.<ref name = \"Fred1\">So says Fred</ref>\r\nArticle started off pretty good,<ref>So says John</ref><ref name = \"Fred1\" /> and finished well.\r\nEnd of.\r\n\r\n==References\r\n{{Reflist}}"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert ArticleText == t, r"No change: ReorderReferences not applied within en-wp genfixes"
+    assert genFixes.article_text == t, (
+        r"No change: ReorderReferences not applied within en-wp genfixes"
+    )
     S = set_lang(r"uk")
     t = "'''Article''' is great.<ref name = \"Fred1\">So says Fred</ref>\r\nArticle started off pretty good,<ref>So says John</ref><ref name = \"Fred1\" /> and finished well.\r\nEnd of.\r\n\r\n==References\r\n{{Reflist}}"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert ArticleText == t, r"No change: ReorderReferences not applied within uk-wp genfixes"
+    assert genFixes.article_text == t, (
+        r"No change: ReorderReferences not applied within uk-wp genfixes"
+    )
     S = set_lang(r"en")
     S = set_lang(r"ru")
     t = "'''Article''' is great.<ref name = \"Fred1\">So says Fred</ref>\r\nArticle started off pretty good,<ref>So says John</ref><ref name = \"Fred1\" /> and finished well.\r\nEnd of.\r\n\r\n==References\r\n{{Reflist}}"
-    ArticleText = t
+    genFixes.article_text = t
     gen_fixes()
-    assert ArticleText == t, r"No change: ReorderReferences not applied within ru-wp genfixes"
+    assert genFixes.article_text == t, (
+        r"No change: ReorderReferences not applied within ru-wp genfixes"
+    )
     S = set_lang(r"en")
 
 
 def test_fix_unbalanced_brackets() -> None:
     S = W.for_site(EN)
     unfixable = "Symbolist style: [[he abandoned realism and steered his work towards a more mythical and aestheticizing, almost evasionist tone, as denoted in his decorative plafonds for the [[Cau Ferrat]] of [[Sitges]] in 1896 (''La Pintura'', ''La Poesía'', ''La Música'').<ref name=\":19\">{{harvtxt|Hofstätter|1981|p=257}}</ref> With the beginning of the 20th century he moved more towards landscape painting, still with a certain symbolist stamp but with a greater tendency towards realism.<ref>{{harvtxt|Socías|1987|p=45}}</ref>\r\n[[File:Alexandre_de_Riquer_-_Composition_with_winged_nymph_at_sunrise_-_Google_Art_Project.jpg|left|thumb|''Composition with winged nymph at sunrise'' (1887), by [[Alexandre de Riquer]], [[National Art Museum of Catalonia]], [[Barcelona]]]]\r\n[[Alexandre de Riquer]] was a painter, engraver, decorator, illustrator and poster artist, as well as a poet and art theorist. He lived for a time in London, where he was influenced by preraphaelitism and the [[Arts & Crafts]] movement. He excelled especially in book illustration (''Crisantemes'', 1899; ''Anyoranses'', 1902) and in the design of [[Ex Libris (bookplate)|ex-libris]], a genre he raised to heights of great quality.<ref>{{harvtxt|Hofstätter|1981|pp=256–257}}</ref>\r\n[[File:Somni_Joan_Brull.jpg|thumb|''Ensueño'' (1897) by [[Joan Brull]], National Museum of Art of Catalonia, Barcelona]]\r\n[[Joan Llimona]], founder of the [[Cercle Artístic de Sant Lluc]], leaned towards a mysticism of strong religiosity, as denoted in his paintings for the dome of the camarín of the church of the [[Monastery of Montserrat]] (1898) or the murals of the dining room of the Recolons house in Barcelona (1905).<ref name=\":19\" /> Trained at the [[Escola de la Llotja]], he furthered his studies in Italy for four years. His first works were of genre costumbrista, but by 1890 his painting focused on religion, with compositions that combine formal realism with the idealism of the subjects, with a style sometimes compared to [[Jean-François Millet|Millet]] and Puvis de Chavannes.<ref>{{harvtxt|Socías|1987|pp=39–41}}</ref>\r\n\r\n==References==\r\n{{reflist}}"
-    ArticleText = unfixable
+    genFixes.article_text = unfixable
     gen_fixes()
-    assert ArticleText == unfixable, r"no change to unfixable square brackets"
+    assert genFixes.article_text == unfixable, r"no change to unfixable square brackets"
 
 
 def test_add_wiki_project_banner_shell() -> None:
     S = W.for_site(EN)
     AllCommented = "<!-- {{WikiProject a|text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject c|text}\r\n{{WikiProject d|text}} -->"
-    ArticleText = AllCommented
+    genFixes.article_text = AllCommented
     talk_gen_fixes()
-    assert ArticleText == AllCommented, (
+    assert genFixes.article_text == AllCommented, (
         r"no WikiProject banner shell addition when templates all commented out"
     )
     a = "{{Talk header}}\r\n{{WikiProject banner shell|1=\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject Biography|living=yes}}\r\n{{WikiProject c|text}}\r\n| blp=yes\r\n}}\r\n"
-    ArticleText = "{{Talk header}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject Biography|living=yes}}\r\n{{WikiProject c|text}}"
+    genFixes.article_text = "{{Talk header}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject Biography|living=yes}}\r\n{{WikiProject c|text}}"
     talk_gen_fixes()
-    assert ArticleText == a, r"Adds WikiProject banner shell below talk header"
+    assert genFixes.article_text == a, r"Adds WikiProject banner shell below talk header"
     a = "{{Talk header}}\r\n{{WikiProject banner shell|1=\r\n{{WikiProject a |text}}\r\n{{WikiProject d|text}}\r\n{{WikiProject c|text}}\r\n}}\r\n"
-    ArticleText = "{{Talk header}}\r\n{{WikiProject a |text}}\r\n{{WikiProject d|text}}\r\n{{WikiProject c|text}}"
+    genFixes.article_text = "{{Talk header}}\r\n{{WikiProject a |text}}\r\n{{WikiProject d|text}}\r\n{{WikiProject c|text}}"
     talk_gen_fixes()
-    assert ArticleText == a, r"Adds WikiProject banner shell when 3 wikiproject links"
-    ArticleText = "{{Talk header}}\r\n{{wikiProject a |text}}\r\n{{wikiProject d|text}}\r\n{{wiki project c|text}}"
+    assert genFixes.article_text == a, r"Adds WikiProject banner shell when 3 wikiproject links"
+    genFixes.article_text = "{{Talk header}}\r\n{{wikiProject a |text}}\r\n{{wikiProject d|text}}\r\n{{wiki project c|text}}"
     talk_gen_fixes()
-    assert ArticleText == a.replace(r"WikiProject c", r"wiki project c").replace(
+    assert genFixes.article_text == a.replace(r"WikiProject c", r"wiki project c").replace(
         r"WikiProject a", r"wikiProject a"
     ).replace(r"WikiProject d", r"wikiProject d"), (
         r"Adds WikiProject banner shell when 3 wikiProject links, wikiproject name variations"
@@ -542,15 +590,15 @@ def test_add_wiki_project_banner_shell() -> None:
 
 def test_add_wiki_project_banner_shell_whitespace() -> None:
     S = W.for_site(EN)
-    ArticleText = "{{WikiProject Biography|living=yes}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject c|text}}"
+    genFixes.article_text = "{{WikiProject Biography|living=yes}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject c|text}}"
     a = "{{WikiProject banner shell|1=\r\n{{WikiProject Biography|living=yes}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject c|text}}\r\n| blp=yes\r\n}}\r\n"
     talk_gen_fixes()
-    assert ArticleText == a, (
+    assert genFixes.article_text == a, (
         r"Adds WikiProject banner shell when 3 wikiproject links, cleans whitespace"
     )
-    ArticleText = "{{WikiProject Biography|living=yes}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject c|text}}\r\n\r\n==First==\r\nWord.\r\n\r\n\r\n\r\n\r\nSecond."
+    genFixes.article_text = "{{WikiProject Biography|living=yes}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject c|text}}\r\n\r\n==First==\r\nWord.\r\n\r\n\r\n\r\n\r\nSecond."
     a = "{{WikiProject banner shell|1=\r\n{{WikiProject Biography|living=yes}}\r\n{{WikiProject a |text}}\r\n{{WikiProject b|text}}\r\n{{WikiProject c|text}}\r\n| blp=yes\r\n}}\r\n\r\n==First==\r\nWord.\r\n\r\n\r\n\r\n\r\nSecond."
     talk_gen_fixes()
-    assert ArticleText == a, (
+    assert genFixes.article_text == a, (
         r"Adds WikiProject banner shell when 3 wikiproject links, cleans whitespace"
     )

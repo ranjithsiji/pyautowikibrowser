@@ -717,8 +717,9 @@ class CategoryDefaultSortMixin:
         return fix_people_categories(article_text, article_title, parse_talk_page)
 
     def fix_people_categories_no_change(
-        self, article_text: str, article_title: str
+        self, article_text: str, article_title: str, parse_talk_page: bool = False
     ) -> tuple[str, bool]:
-        """AWB's overload FixPeopleCategories(..., out noChange): returns (text, no_change)."""
-        new_text = self.fix_people_categories(article_text, article_title)
+        """AWB's overloads FixPeopleCategories(..., [parseTalkPage,] out noChange): returns
+        (text, no_change)."""
+        new_text = self.fix_people_categories(article_text, article_title, parse_talk_page)
         return new_text, new_text == article_text

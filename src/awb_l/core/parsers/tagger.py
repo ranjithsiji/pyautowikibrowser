@@ -113,6 +113,16 @@ class UnitTestTaggerLookups:
         return 0
 
 
+_default_tagger_lookups: TaggerLookups = OfflineTaggerLookups()
+
+
+def set_default_tagger_lookups(lookups: TaggerLookups) -> None:
+    """The lookups for Parsers objects that have none of their own (AWB's tests set the
+    Globals.UnitTestMode values this way; the app sets one backed by the wiki)."""
+    global _default_tagger_lookups
+    _default_tagger_lookups = lookups
+
+
 # -- static regexes --------------------------------------------------------------------------------
 
 _ImproveCategories = nested_template_regex("improve categories")
@@ -158,10 +168,8 @@ class TaggerMixin:
 
     @property
     def tagger_lookups(self) -> TaggerLookups:
-        """Where Tagger gets the page's categories and links (OfflineTaggerLookups by default)."""
-        if self._tagger_lookups is None:
-            self._tagger_lookups = OfflineTaggerLookups()
-        return self._tagger_lookups
+        """Where Tagger gets the page's categories and links (the module default if not set)."""
+        return _default_tagger_lookups if self._tagger_lookups is None else self._tagger_lookups
 
     @tagger_lookups.setter
     def tagger_lookups(self, value: TaggerLookups) -> None:
@@ -850,7 +858,14 @@ def subst_user_templates(
     return talk_page_text.replace("REPLACE_THIS_TEXT", "{{{subst")
 
 
-def regular_categories(categories: str | Sequence[str], hide_comments: bool = True) -> list[str]:
+class _Named(Protocol):
+    @property
+    def name(self) -> str: ...
+
+
+def regular_categories(
+    categories: str | Sequence[str | _Named], hide_comments: bool = True
+) -> list[str]:
     """Categories that are not stub or proposed deletion categories.
 
     AWB's overloads: a list of category titles (from the wiki), or wiki text, whose
@@ -878,7 +893,8 @@ def regular_categories(categories: str | Sequence[str], hide_comments: bool = Tr
             or name == "Articles created via the Article Wizard"
         )
 
-    return [c for c in categories if regular(c)]
+    titles = [c if isinstance(c, str) else c.name for c in categories]  # titles or Article objects
+    return [c for c in titles if regular(c)]
 
 
 def tag_updater(article_text: str, dated_templates: Iterable[str] | None = None) -> str:

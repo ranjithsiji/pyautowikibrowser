@@ -265,6 +265,12 @@ class DotNetRegex:
 
         return self.compiled.sub(repl, text, count=n, timeout=timeout)
 
+    def result(self, m: DotNetMatch, replacement: str) -> str:
+        """Match.Result: the .NET replacement string expanded for a match of this regex."""
+        if m.m is None:
+            return ""
+        return translate_replacement(replacement, self.translated)(m.m)
+
     def split(self, text: str, *, timeout: float | None = None) -> list[str]:
         """Regex.Split: the text between matches, plus what each .NET group captured.
 

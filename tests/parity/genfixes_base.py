@@ -1,24 +1,55 @@
-"""Stand-in for AWB's GenfixesTestsBase until the Article general-fixes pipeline is ported.
+"""Port of AWB's GenfixesTestsBase (UnitTests/GenfixesTests.cs): runs text through the Article
+general-fixes pipeline, as AWB does when saving a page with general fixes on."""
 
-AWB's helper runs the whole pipeline (Article.PerformGeneralFixes). Tests that use it are marked
-as expected failures at that point, so the rest of each test file still runs and the dependency
-stays visible.
-"""
-
-from collections.abc import Callable
-from typing import NoReturn
-
-import pytest
-
-_REASON = "needs the Article general-fixes pipeline (not ported yet)"
+from awb_l.core.article import Article, SkipOptions
+from awb_l.core.parsers.hidetext import HideText
+from awb_l.core.parsers.parsers import Parsers
 
 
 class GenfixesTestsBase:
-    def __getattr__(self, name: str) -> Callable[..., NoReturn]:
-        def pending(*args: object, **kwargs: object) -> NoReturn:
-            pytest.xfail(_REASON)
+    def __init__(self) -> None:
+        self.parser = Parsers()
+        self._a = Article("Test")
+        self._h = HideText(False, True, True)
+        self._s = SkipOptions()
 
-        return pending
+    def gen_fixes(self, arg: bool | str = True) -> None:
+        """AWB's GenFixes(), GenFixes(replaceReferenceTags) and GenFixes(articleTitle)."""
+        replace_reference_tags = True
+        if isinstance(arg, str):
+            self._a = Article(arg, self._a.article_text)
+        else:
+            replace_reference_tags = arg
+        self._a.perform_general_fixes(
+            self.parser, self._h, self._s, replace_reference_tags, False, False
+        )
+
+    def talk_gen_fixes(self) -> None:
+        self._a.perform_talk_general_fixes(self._h)
+
+    @property
+    def article_text(self) -> str:
+        return self._a.article_text
+
+    @article_text.setter
+    def article_text(self, value: str) -> None:
+        self._a = Article(self._a.name, value)
+
+    def assert_change(self, text: str, expected: str) -> None:
+        self.article_text = text
+        self.gen_fixes()
+        assert self.article_text == expected
+
+    def assert_not_changed(
+        self, text: str, article_title: str | None = None, message: str = "unit test"
+    ) -> None:
+        self.article_text = text
+        if article_title is None:
+            self.gen_fixes()
+            assert self.article_text == text
+        else:
+            self.gen_fixes(article_title)
+            assert self.article_text == text, message
 
 
 genFixes = GenfixesTestsBase()

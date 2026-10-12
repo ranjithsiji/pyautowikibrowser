@@ -167,6 +167,11 @@ class SiteConfig:
     # [[WP:AWB/Dated templates]]), first letter upper case; awb_l.api loads them with
     # parsers.templates.load_dated_templates.
     dated_templates: tuple[str, ...] = ()
+    # Text of [[WP:AWB/Template redirects]] and the {{AWB rename template parameter}} rules
+    # (WikiRegexes.TemplateRedirects / RenamedTemplateParameters); parsed and cached by
+    # parsers.templates.site_template_redirects / site_renamed_template_parameters.
+    template_redirects_text: str = ""
+    renamed_template_parameters_text: str = ""
     script_path: str = "/w"
     # Wikis sorting categories by Unicode collation (uca-*): sort keys keep their diacritics.
     unicode_category_collation: bool = False
@@ -210,6 +215,8 @@ class SiteConfig:
                 self.typo_summary_tag,
                 self.untitled_heading,
                 self.dated_templates,
+                self.template_redirects_text,
+                self.renamed_template_parameters_text,
                 self.script_path,
                 self.unicode_category_collation,
                 self.interwiki_languages,

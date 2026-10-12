@@ -19,13 +19,19 @@ from awb_l.core.rx import DotNetRegex
 from awb_l.core.site import Namespace, SiteConfig, current_site
 from tests.parity import regex_assert
 from tests.parity.genfixes_base import genFixes
-from tests.parity.helpers import EN, cs_len, set_lang, set_project, set_site, utc_month_year
+from tests.parity.helpers import (
+    EN,
+    cs_len,
+    set_lang,
+    set_project,
+    set_site,
+    unit_test,
+    utc_month_year,
+)
 from tests.parity.regex_assert import check_match, check_matches
 
 parser = genfixes.Parsers()  # AWB's RequiresParser
-unit_test = genfixes.UnitTestTaggerLookups()  # AWB's Globals.UnitTestIntValue / UnitTestBoolValue
-parser.tagger_lookups = unit_test
-
+from awb_l.core.article import Article  # noqa: E402
 
 Uncat = r"{{Uncategorized|date={{subst:CURRENTMONTHNAME}} {{subst:CURRENTYEAR}}}}"
 UncatStub = r"{{Uncategorized stub|date={{subst:CURRENTMONTHNAME}} {{subst:CURRENTYEAR}}}}"
@@ -2166,17 +2172,17 @@ def test_regular_categories() -> None:
     S = W.for_site(EN)
     Cats = []
     assert len(genfixes.regular_categories(Cats)) == 0
-    Cats.append(r"Category:Foo")
+    Cats.append(Article(r"Category:Foo"))
     assert len(genfixes.regular_categories(Cats)) == 1
-    Cats.append(r"Category:Bar")
-    Cats.append(r"Category:Some stubs")
-    Cats.append(r"Category:A :Stubs")
-    Cats.append(r"Category:Stubs")
+    Cats.append(Article(r"Category:Bar"))
+    Cats.append(Article(r"Category:Some stubs"))
+    Cats.append(Article(r"Category:A :Stubs"))
+    Cats.append(Article(r"Category:Stubs"))
     assert len(genfixes.regular_categories(Cats)) == 2
-    Cats.append(r"Category:Proposed deletion")
-    Cats.append(r"Category:Foo proposed deletions")
-    Cats.append(r"Category:Foo proposed for deletion")
-    Cats.append(r"Category:Articles created via the Article Wizard")
+    Cats.append(Article(r"Category:Proposed deletion"))
+    Cats.append(Article(r"Category:Foo proposed deletions"))
+    Cats.append(Article(r"Category:Foo proposed for deletion"))
+    Cats.append(Article(r"Category:Articles created via the Article Wizard"))
     assert len(genfixes.regular_categories(Cats)) == 2
     Cats.clear()
     assert len(genfixes.regular_categories(r"")) == 0
