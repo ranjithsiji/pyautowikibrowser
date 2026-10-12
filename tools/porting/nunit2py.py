@@ -21,16 +21,25 @@ OPTS = {"IgnoreCase": "IGNORE_CASE", "Multiline": "MULTILINE", "Singleline": "SI
 
 class Unsupported(Exception): pass
 
+SNAKE_EXCEPTIONS = {"ExtractCOinS": "extract_coins", "COinS": "coins"}
+
+
 def snake(name):
     """CamelCase -> snake_case, keeping acronyms together (HTMLListToWiki -> html_list_to_wiki)."""
+    if name in SNAKE_EXCEPTIONS:
+        return SNAKE_EXCEPTIONS[name]
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
 
+# AWB overloads with "out bool noChange" that AWB-L ports as foo_no_change() -> (text, no_change)
+NO_CHANGE_OVERLOADS = {"fix_syntax", "fix_headings", "cite_template_dates", "remove_category", "add_category",
+    "bullet_external_links", "conversions", "fix_people_categories", "interwiki_conversions", "living_people",
+    "remove_image", "replace_image", "unicodify"}
 TOOLS_FIELDS = {"Diacritics", "SortKeyChars"}
 DATE_LOCALE = {"International": "INTERNATIONAL", "American": "AMERICAN", "ISO": "ISO", "Undetermined": "UNDETERMINED"}
 
 class E:
     """Expression parser producing Python source."""
-    def __init__(self, toks): self.t, self.i, self.out_args = toks, 0, []
+    def __init__(self, toks): self.t, self.i, self.out_args, self.ref_args = toks, 0, [], []
 
     def call_args(self):
         """Arguments, collecting C# "out x" arguments into self.out_args instead."""
@@ -39,6 +48,8 @@ class E:
         while self.peek()[1] != ")":
             if self.peek()[1] == "out":
                 self.take(); _, name = self.take(); self.out_args.append(name)
+            elif self.peek()[1] == "ref":
+                out.append(self.ref_arg())
             else:
                 out.append(self.expr())
             if self.peek()[1] == ",": self.take(",")
@@ -57,11 +68,31 @@ class E:
         k, t = self.t[self.i]
         if text is not None and t != text: raise Unsupported(f"expected {text} got {t} near {self.t[self.i-3:self.i+3]}")
         self.i += 1; return k, t
+    def ref_arg(self):
+        """ "ref x" argument: AWB-L returns (new x, value), see with_refs."""
+        self.take("ref")
+        e = self.expr()
+        self.ref_args.append(e)
+        return e
+
+    @staticmethod
+    def with_refs(code, refs):
+        """f(ref x, ...) -> value of f, also rebinding x: AWB-L returns (new x, value)."""
+        if len(refs) != 1 or not refs[0].isidentifier():
+            raise Unsupported(f"ref arguments {refs}")
+        return f"((_t := {code}), ({refs[0]} := _t[0]))[0][1]"
+
+    def wrap_refs(self, code):
+        if self.ref_args:
+            refs, self.ref_args = self.ref_args, []
+            code = self.with_refs(code, refs)
+        return code
+
     def args(self):
         self.take("(")
         out = []
         while self.peek()[1] != ")":
-            out.append(self.expr())
+            out.append(self.ref_arg() if self.peek()[1] == "ref" else self.expr())
             if self.peek()[1] == ",": self.take(",")
         self.take(")")
         return out
@@ -113,10 +144,17 @@ class E:
         if name == "Groups":
             self.take("["); key = self.expr(); self.take("]")
             self.take("."); _, prop = self.take()
-            if prop == "Value": return f"{code}.group({key})"
-            if prop == "Success": return f"{code}.group_success({key})"
-            if prop == "Index": return f"{code}.start({key})"
-            raise Unsupported("Groups." + prop)
+            prop, *rest = prop.split(".")  # Groups[2].Value.Equals(...)
+            if prop == "Value": code = f"{code}.group({key})"
+            elif prop == "Success": code = f"{code}.group_success({key})"
+            elif prop == "Index": code = f"{code}.start({key})"
+            elif prop == "Length": code = f"len({code}.group({key}))"
+            else: raise Unsupported("Groups." + prop)
+            for part in rest: code = self.member(code, part)
+            return code
+        if name == "TryGetValue":  # d.TryGetValue(k, out v) -> ((v := d.get(k)) is not None)
+            self.take("("); key = self.expr(); self.take(","); self.take("out"); _, var = self.take(); self.take(")")
+            return f"(({var} := {code}.get({key})) is not None)"
         if name == "Length": return f"cs_len({code})"
         simple = {"Value": "value", "Success": "success", "Index": "index"}
         if name in simple: return f"{code}.{simple[name]}"
@@ -130,7 +168,7 @@ class E:
             # generic fallback: AWB method -> snake_case Python method (verified by running tests)
             if self.peek()[1] == "(":
                 a = self.args()
-                return f"{code}.{snake(name)}({', '.join(a)})"
+                return self.wrap_refs(f"{code}.{snake(name)}({', '.join(a)})")
             return f"{code}.{snake(name)}"
         a = self.args() if self.peek()[1] == "(" else []
         if name == "Contains": return f"({a[0]} in {code})"
@@ -155,6 +193,7 @@ class E:
         if t in ("true", "false"): self.take(); return t.capitalize()
         if t == "new":
             self.take(); _, what = self.take()
+            what = what.rsplit(".", 1)[-1]  # System.Collections.Generic.List -> List
             if what in ("[]", "[", "string"):
                 if what == "[": self.take("]")
                 if what == "string": self.take("["); self.take("]")
@@ -167,6 +206,13 @@ class E:
             if what == "Regex":
                 a = self.args()
                 return f"DotNetRegex({', '.join(a)})"
+            if what == "Article" and self.peek()[1] == "(":
+                a = self.args()
+                if len(a) == 1:  # new Article(title) where a title is all that is used
+                    return a[0]
+                return self.postfix(f"Article({', '.join(a)})")
+            if what == "Parsers":
+                a = self.args(); return self.postfix(f"genfixes.Parsers({', '.join(a)})")
             if what in ("List", "Dictionary", "HashSet"):
                 self.take("<")
                 depth = 1
@@ -208,6 +254,12 @@ class E:
                 else: raise Unsupported("WikiRegexes." + name)
                 for part in filter(None, more.split(".")): code = self.member(code, part)
                 return code
+            if t == "Regex.Escape":
+                a = self.args(); return f"rx.escape({a[0]})"
+            if t == "System.DateTime.UtcNow.ToString":
+                self.args(); return "utc_month_year()"  # only used with "MMMM yyyy", BritishEnglish
+            if head == "InterWikiOrderEnum":
+                return f"genfixes.InterWikiOrderEnum.{snake(rest).upper()}"
             if head == "ProjectEnum":
                 return repr(rest)
             if head == "Namespace":
@@ -234,14 +286,26 @@ class E:
                 regex = f"DotNetRegex({pat}{', ' + opts[0] if opts else ''})"
                 meth = {"IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace", "Split": "split"}[rest]
                 return self.postfix(f"{regex}.{meth}({', '.join([text, *other])})")
-            if head in ("Parsers", "parser", "parser2", "Parser", "p") and rest and not t.startswith("Parsers.DateLocale."):
+            if head in ("Parsers", "MetaDataSorter", "parser", "parser2", "Parser", "p") and rest and not t.startswith("Parsers.DateLocale."):
                 name, _, more = rest.partition(".")
-                obj = "genfixes" if head == "Parsers" else head
-                if self.peek()[1] == "(":
+                obj = "genfixes" if head in ("Parsers", "MetaDataSorter") else head
+                if more:  # parser.Sorter.RemoveCats(...): the call is on the last member
+                    code = f"{obj}.{snake(name)}"
+                elif self.peek()[1] == "(" and snake(name) == "tagger":
+                    # Tagger(..., [out noChange,] ref summary): AWB-L returns (text, [no_change,] summary)
                     a = self.call_args()
-                    code = f"{obj}.{snake(name)}({', '.join(a)})"
+                    refs, self.ref_args = self.ref_args, []
+                    outs, self.out_args = self.out_args, []
+                    a = [x for x in a if x not in refs]
+                    fn = "tagger_no_change" if outs else "tagger"
+                    code = self.with_outs(f"{obj}.{fn}({', '.join(a)})", outs + refs)
+                elif self.peek()[1] == "(":
+                    a = self.call_args()
+                    code = self.wrap_refs(f"{obj}.{snake(name)}({', '.join(a)})")
                     if self.out_args:
                         outs, self.out_args = self.out_args, []
+                        if snake(name) in NO_CHANGE_OVERLOADS:  # separate function in AWB-L
+                            code = code.replace(f".{snake(name)}(", f".{snake(name)}_no_change(", 1)
                         code = self.with_outs(code, outs)
                 else:
                     code = f"{obj}.{snake(name)}"
@@ -335,7 +399,7 @@ def statement(toks):
         e.take(); a = e.args(); out = f"S = set_lang({a[0]})"
     elif t == "WikiRegexes.MakeLangSpecificRegexes":
         return None
-    elif t in ("List", "Dictionary", "HashSet", "IDictionary") and e.peek(1)[1] == "<":
+    elif t.rsplit(".", 1)[-1] in ("List", "Dictionary", "HashSet", "IDictionary") and e.peek(1)[1] == "<":
         e.take(); e.take("<"); depth = 1
         while depth:
             depth += {"<": 1, ">": -1}.get(e.take()[1], 0)
@@ -349,9 +413,54 @@ def statement(toks):
     elif t == "Variables.AddUnderscoredTitles":
         e.take(); a = e.args()
         out = f"S = set_site(underscored_titles=current_site().underscored_titles | frozenset({a[0]}))"
-    elif t == "Variables.SetProjectSimple":
+    elif t in ("Variables.SetProjectSimple", "Variables.SetProject"):
         e.take(); a = e.args()
-        out = f"S = set_site(lang_code={a[0]}, project={a[1]})"
+        out = f"S = set_project({a[0]}, {a[1]})"
+    elif t == "foreach" and e.peek(1)[1] == "(":
+        # foreach (T x in expr) statement;  (single-statement body without braces)
+        e.take(); e.take("("); e.take()
+        _, var = e.take(); e.take("in"); seq = e.expr(); e.take(")")
+        body = statement(e.t[e.i:])
+        e.i = len(e.t)
+        out = f"for {var} in {seq}:\n" + "\n".join("    " + line for line in (body or "pass").split("\n"))
+    elif t == "Variables.Namespaces.Remove":
+        e.take(); a = e.args()
+        out = f"S = set_site(namespaces={{k: v for k, v in current_site().namespaces.items() if k != {a[0]}}})"
+    elif t == "Variables.Namespaces.Add":
+        e.take(); a = e.args()
+        name = a[1]
+        if name.endswith('"') and not name.endswith(':"'):  # SiteConfig names end with ":", as AWB's do
+            name = name[:-1] + ':"'
+        out = f"S = set_site(namespaces={{**current_site().namespaces, {a[0]}: {name}}})"
+    elif t == "WikiRegexes.DatedTemplates" and e.peek(1)[1] == "=":
+        e.take(); e.take("=")
+        out = f"S = set_site(dated_templates=tuple({e.expr()}))"
+    elif t in ("Globals.UnitTestIntValue", "Globals.UnitTestBoolValue") and e.peek(1)[1] == "=":
+        e.take(); e.take("=")
+        out = f"unit_test.{'int_value' if t.endswith('IntValue') else 'bool_value'} = {e.expr()}"
+    elif t == "WikiRegexes.DatedTemplates.Clear":
+        e.take(); e.args(); out = "S = set_site(dated_templates=())"
+    elif t == "WikiRegexes.DatedTemplates.Add":
+        e.take(); a = e.args()
+        out = f"S = set_site(dated_templates=(*current_site().dated_templates, {a[0]}))"
+    elif t == "Variables.MagicWords.Add":
+        e.take(); a = e.args()
+        out = f"S = set_site(magic_words={{**current_site().magic_words, {a[0]}: tuple({a[1]})}})"
+    elif t == "Variables.MagicWords.Remove":
+        e.take(); a = e.args()
+        out = f"S = set_site(magic_words={{k: v for k, v in current_site().magic_words.items() if k != {a[0]}}})"
+    elif t == "Variables.NamespacesCaseInsensitive.Remove":
+        e.take(); e.args()
+        return None  # AWB-L derives NamespacesCaseInsensitive from the namespace names; see Add
+    elif t == "Variables.NamespacesCaseInsensitive.Add":
+        # AWB sets the case-insensitive regex directly; AWB-L derives it from the namespace name,
+        # so set the name the pattern stands for ("[Kk]ategori:" -> "Kategori:")
+        e.take(); a = e.args()
+        pat = eval(a[1])
+        name = re.sub(r"\[(.).\]", r"\1", pat)
+        name = re.sub(r"\(\?i:([^)]*)\)\\s\*", r"\1", name)
+        out = (f"S = set_site(namespaces={{**current_site().namespaces, {a[0]}: {name!r}}})"
+               f"  # AWB: NamespacesCaseInsensitive[...] = {pat!r}")
     elif t in ("Variables.UnderscoredTitles.Add", "Variables.UnderscoredTitles.Remove"):
         e.take(); a = e.args()
         op = "|" if t.endswith("Add") else "-"
@@ -363,12 +472,19 @@ def statement(toks):
         e.take(); e.take("=")
         out = f"S = set_site(interwiki_languages=frozenset({e.expr()}))"
     elif k == "id" and e.peek(1)[1] == "=" and e.peek(2)[1] != "=":
-        e.take(); e.take("="); out = f"{t} = {e.expr()}"
+        e.take(); e.take("=")
+        base, *members = t.split(".")
+        target = ".".join([base, *(snake(m) for m in members)])  # parser.Sorter.AddCatKey
+        out = f"{target} = {e.expr()}"
     elif k == "id" and (e.peek(1)[1] == "(" or "." in t):
         out = e.expr()  # expression statement, e.g. a helper call
     else:
         raise Unsupported(f"statement {toks[:4]}")
     if e.i != len(e.t): raise Unsupported(f"trailing {e.t[e.i:e.i+4]}")
+    # d.TryGetValue(k, out v) used as a statement: just the assignment
+    m = re.fullmatch(r"\(\((\w+) := (.*)\) is not None\)", out or "")
+    if m:
+        out = f"{m.group(1)} = {m.group(2)}"
     return out
 
 def main():
@@ -391,7 +507,7 @@ def main():
         t = toks[i][1]
         if t == "{": depth += 1
         elif t == "}": depth -= 1
-        elif t == "const" and depth == 1:
+        elif t == "const" and depth in (1, 2):  # namespace or class body
             j = i + 1
             while toks[j][1] != ";": j += 1
             try:
@@ -404,6 +520,7 @@ def main():
     if consts:
         out.append("\n".join(consts) + "\n")
     failed = []
+    used = set()
     i = 0
     cls = None
     while i < len(toks):
@@ -430,18 +547,21 @@ def main():
                 if tok[1] == ";" and d == 0:
                     stmts.append(cur); cur = []
                 else: cur.append(tok)
+            # two fixtures in one file can have tests of the same name: qualify the later ones
+            pyname = snake(name) if snake(name) not in used else f"{snake(cls)}_{snake(name)}"
+            used.add(pyname)
             lines = ["S = W.for_site(EN)"]
             try:
                 for st in stmts:
                     if not st: continue
                     py = statement(st)
                     if py: lines.append(py)
-                fn = f"def test_{snake(name)}() -> None:\n" + "\n".join("    " + l for line in lines for l in line.split("\n")) + "\n"
+                fn = f"def test_{pyname}() -> None:\n" + "\n".join("    " + l for line in lines for l in line.split("\n")) + "\n"
             except Exception as ex:  # anything unexpected: this test only is not converted
                 failed.append((name, f"{type(ex).__name__}: {ex}"))
                 ex = Unsupported(f"{type(ex).__name__}: {ex}")
                 fn = (f"@pytest.mark.skip(reason={('not converted: ' + str(ex))[:90]!r})\n"
-                      f"def test_{snake(name)}() -> None:\n    pass\n")
+                      f"def test_{pyname}() -> None:\n    pass\n")
             out.append(fn)
             i = k
         i += 1

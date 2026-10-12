@@ -32,7 +32,7 @@ from collections.abc import Iterable
 
 from awb_l.core.dotnet_regex import DotNetOptions as O
 from awb_l.core.rx import DotNetRegex, escape
-from awb_l.core.site import Namespace, SiteConfig
+from awb_l.core.site import CANONICAL_NAMESPACES, Namespace, SiteConfig
 from awb_l.core.textutil import first_difference, nested_template_regex, template_name_regex
 
 _R = DotNetRegex
@@ -2338,7 +2338,11 @@ class SiteRegexes:
 
     def _make_namespace_specific_regexes(self) -> None:
         site = self.site
-        nsci = site.namespaces_case_insensitive
+        nsci = dict(site.namespaces_case_insensitive)
+        # A wiki missing a standard namespace (AWB's tests remove one from Variables.Namespaces
+        # after the regexes are built) falls back to the canonical English name.
+        for ns, name in CANONICAL_NAMESPACES.items():
+            nsci.setdefault(ns, "(?i:" + name.rstrip(":").replace(" ", "[ _]") + r")\s*:")
         self.NamespacesCaseInsensitive: dict[int, DotNetRegex] = {k: _R(v) for k, v in nsci.items()}
 
         category = nsci[Namespace.CATEGORY]

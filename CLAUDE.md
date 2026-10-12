@@ -173,7 +173,12 @@ Run tests and pyright before calling any task done.
 1. Done: skeleton, package layout, CI on ubuntu/macos/windows.
 2. Done: `core/rx.py` + `dotnet_regex.py` + multilingual Unicode tests; all enwiki typo rules compile.
 3. Port `WikiRegexes` (done: `RegexTests.cs` passes unchanged), `Tools` (done: `ToolsTests.cs` passes;
-   3 .NET/UI-only tests skipped), then `Parse/*` with their tests (next: `HideText.cs`, then `Parsers.cs`).
+   3 .NET/UI-only tests skipped), then `Parse/*` with their tests (done except `RegExTypoFix.cs`,
+   `FindandReplace.cs`; Footnotes, FixCitationTemplates, CiteTemplateDates, Formatting, Parser, FixSyntax,
+   FixNonBreakingSpaces, Sorter, Category, UtilityFunction, DynamicRegex, Summary and Tagger tests pass).
+   Next: the typo/find-and-replace rules, then `Article.cs` (the general-fixes pipeline), which turns the
+   `genFixes` expected failures into real tests. Tagger's wiki lookups (categories, incoming/outgoing
+   links) go through `parsers.tagger.TaggerLookups`, implemented in `api/` in step 4.
 4. `api/`: login, CheckPage, siteinfo, fetch/save, scheduler; `lists/` via pagegenerators. Wikidata: fetch items
    (batched `wbgetentities`) for sitelinks (flag/remove local interwikis Wikidata already has, report conflicts),
    P569/P570 birth/death dates (people categories, person detection, DEFAULTSORT), short description,

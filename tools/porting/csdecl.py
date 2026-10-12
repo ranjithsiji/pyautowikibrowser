@@ -36,8 +36,10 @@ def declarations(src):
         if t in ("public", "private", "internal") and i + 1 < len(toks):
             j = i
             mods = []
-            while toks[j][1] in ("public","private","internal","static","readonly","const"):
+            while toks[j][1] in ("public","private","internal","static","readonly","const","partial","sealed","abstract"):
                 mods.append(toks[j][1]); j += 1
+            if toks[j][1] in ("class", "struct", "interface", "enum"):  # type declaration, not a field
+                i = j + 1; continue
             # type tokens until NAME followed by = or ;
             start = j
             depth = 0

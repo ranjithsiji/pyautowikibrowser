@@ -17,7 +17,9 @@ Ported code and tests use `genfixes.fix_links(...)` where AWB has `Parsers.FixLi
 # ruff: noqa: F403
 # pyright: reportWildcardImportFromLibrary=false
 
+from awb_l.core.parsers.boldtitle import *
 from awb_l.core.parsers.categorydefaultsort import *
+from awb_l.core.parsers.citetemplates import *
 from awb_l.core.parsers.fixdates import *
 from awb_l.core.parsers.fixheadings import *
 from awb_l.core.parsers.fixsyntax import *
@@ -27,6 +29,7 @@ from awb_l.core.parsers.multipleissues import *
 from awb_l.core.parsers.parsers import *
 from awb_l.core.parsers.references import *
 from awb_l.core.parsers.sortmetadata import *
+from awb_l.core.parsers.tagger import *
 from awb_l.core.parsers.templates import *
 from awb_l.core.parsers.unbalancedbrackets import *
 from awb_l.core.parsers.wikilinks import *

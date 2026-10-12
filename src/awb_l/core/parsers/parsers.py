@@ -33,6 +33,9 @@ from typing import TYPE_CHECKING
 from awb_l.core import namespace, rx
 from awb_l.core import wikiregexes as W
 from awb_l.core.parsers import (
+    boldtitle as _boldtitle,
+)
+from awb_l.core.parsers import (
     categorydefaultsort as _cds,
 )
 from awb_l.core.parsers import (
@@ -52,6 +55,9 @@ from awb_l.core.parsers import (
 )
 from awb_l.core.parsers import (
     sortmetadata as _sortmeta,
+)
+from awb_l.core.parsers import (
+    tagger as _tagger,
 )
 from awb_l.core.parsers import templates as _templates
 from awb_l.core.parsers import wikilinks as _wikilinks
@@ -199,7 +205,7 @@ _RefImproveBLP = nested_template_regex(r"RefimproveBLP")
 
 _IMA = nested_template_regex((r"Infobox musical artist", r"Infobox singer"))
 
-_BLPUnsourced = nested_template_regex((r"BLP unsourced", r"BLP unreferenced"))
+BLPUnsourced = nested_template_regex((r"BLP unsourced", r"BLP unreferenced"))
 
 _BLPUnsourcedSection = nested_template_regex(
     (r"BLP unsourced section", r"BLP sources section", r"BLP unreferenced section")
@@ -753,6 +759,12 @@ def bullet_external_links(article_text: str) -> str:
     return article_text
 
 
+def bullet_external_links_no_change(article_text: str) -> tuple[str, bool]:
+    """AWB's overload with out noChange: returns (text, no_change)."""
+    new_text = bullet_external_links(article_text)
+    return new_text, new_text == article_text
+
+
 def no_include_include_only_programming_element(article_text: str) -> bool:
     return W.IncludeonlyNoinclude.is_match(article_text) or _TripleBraceNumIfExist.is_match(
         article_text
@@ -804,6 +816,12 @@ def replace_image(old_image: str, new_image: str, article_text: str) -> str:
     return _R(old_image).replace(article_text, "$1:" + new_image)
 
 
+def replace_image_no_change(old_image: str, new_image: str, article_text: str) -> tuple[str, bool]:
+    """AWB's overload with out noChange: returns (text, no_change)."""
+    new_text = replace_image(old_image, new_image, article_text)
+    return new_text, new_text == article_text
+
+
 def remove_image(image: str, article_text: str, comment_out: bool, comment: str) -> str:
     """Remove (or comment out) uses of a file."""
     if not image:
@@ -831,6 +849,14 @@ def remove_image(image: str, article_text: str, comment_out: bool, comment: str)
     return r.replace(
         article_text, lambda m: "<!-- " + comment + " " + m.value + " -->" if comment_out else ""
     )
+
+
+def remove_image_no_change(
+    image: str, article_text: str, comment_out: bool, comment: str
+) -> tuple[str, bool]:
+    """AWB's overload with out noChange: returns (text, no_change)."""
+    new_text = remove_image(image, article_text, comment_out, comment)
+    return new_text, new_text == article_text
 
 
 # -- people ---------------------------------------------------------------------------------------
@@ -963,6 +989,12 @@ def living_people(article_text: str, article_title: str) -> str:
     )
 
 
+def living_people_no_change(article_text: str, article_title: str) -> tuple[str, bool]:
+    """AWB's overload with out noChange: returns (text, no_change)."""
+    new_text = living_people(article_text, article_title)
+    return new_text, new_text == article_text
+
+
 def format_to_bda(date_and_age: str) -> str:
     """ "May 2, 1950 (age 75)" -> {{birth date and age|mf=y|1950|05|02}}."""
     from awb_l.core import tools
@@ -999,6 +1031,12 @@ def interwiki_conversions(article_text: str) -> str:
         if any(lnk.startswith(old) for lnk in possible):
             article_text = article_text.replace(old, new)
     return article_text
+
+
+def interwiki_conversions_no_change(article_text: str) -> tuple[str, bool]:
+    """AWB's overload with out noChange: returns (text, no_change)."""
+    new_text = interwiki_conversions(article_text)
+    return new_text, new_text == article_text
 
 
 def conversions(article_text: str) -> str:
@@ -1072,6 +1110,12 @@ def conversions(article_text: str) -> str:
     return article_text
 
 
+def conversions_no_change(article_text: str) -> tuple[str, bool]:
+    """AWB's overload with out noChange: returns (text, no_change)."""
+    new_text = conversions(article_text)
+    return new_text, new_text == article_text
+
+
 def _blp_conversions(article_text: str, all_templates: Sequence[str]) -> str:
     from awb_l.core import tools
 
@@ -1093,7 +1137,7 @@ def _blp_conversions(article_text: str, all_templates: Sequence[str]) -> str:
         return text
 
     if "Unreferenced" in all_templates:
-        article_text = to_blp(article_text, "unreferenced", "BLP unreferenced", _BLPUnsourced)
+        article_text = to_blp(article_text, "unreferenced", "BLP unreferenced", BLPUnsourced)
     for old, new in (
         ("Unreferenced section", "BLP unreferenced section"),
         ("Primary sources", "BLP primary sources"),
@@ -1328,6 +1372,8 @@ class Parsers(
     _fixdates.FixDatesMixin,
     _fixsyntax.FixSyntaxMixin,
     _mi.MultipleIssuesMixin,
+    _boldtitle.BoldTitleMixin,
+    _tagger.TaggerMixin,
 ):
     """AWB's Parsers instance: general fixes that keep state (hiding, settings)."""
 

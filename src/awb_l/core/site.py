@@ -159,7 +159,14 @@ class SiteConfig:
     # MediaWiki magic word id -> aliases, e.g. "redirect" -> ("#REDIRECT",)
     magic_words: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: _frozen({}))
     month_names: tuple[str, ...] = EN_MONTH_NAMES
-    stub: str = "[^{}|]*?[Ss]tub"
+    stub: str = "[^{}|]*?[Ss]tub"  # Variables.Stub: stub template name pattern
+    sect_stub: str = r"\{\{[Ss]ect"  # Variables.SectStub: section stub template start
+    typo_summary_tag: str = "typos fixed: "  # Variables.TypoSummaryTag
+    untitled_heading: str = "Untitled"  # Variables.UntitledHeading (talk page fixes)
+    # Templates that take a date= parameter (WikiRegexes.DatedTemplates, from
+    # [[WP:AWB/Dated templates]]), first letter upper case; awb_l.api loads them with
+    # parsers.templates.load_dated_templates.
+    dated_templates: tuple[str, ...] = ()
     script_path: str = "/w"
     # Wikis sorting categories by Unicode collation (uca-*): sort keys keep their diacritics.
     unicode_category_collation: bool = False
@@ -199,6 +206,10 @@ class SiteConfig:
                 tuple(self.magic_words.items()),
                 self.month_names,
                 self.stub,
+                self.sect_stub,
+                self.typo_summary_tag,
+                self.untitled_heading,
+                self.dated_templates,
                 self.script_path,
                 self.unicode_category_collation,
                 self.interwiki_languages,
@@ -241,8 +252,25 @@ class SiteConfig:
         return cls()
 
     def with_lang_code(self, lang_code: str) -> SiteConfig:
-        """Variables.SetProjectLangCode: change only the language (namespaces stay as they are)."""
-        return replace(self, lang_code=lang_code, rtl=lang_code == "ar")
+        """Variables.SetProjectLangCode: change the language and AWB's language-specific values
+        (stub patterns, typo summary, untitled heading); namespaces stay as they are.
+
+        As in AWB, a value a language does not set keeps its previous value, except that "en"
+        resets them all to the English defaults. The summary tag is not changed here: it also
+        needs the wiki's AWB project link, which awb_l.api sets from the wiki's configuration.
+        """
+        defaults = SiteConfig()
+        if lang_code == "en":
+            values: dict[str, str] = {
+                "stub": defaults.stub,
+                "sect_stub": defaults.sect_stub,
+                "typo_summary_tag": "[[WP:AWB/T|typo(s) fixed]]: ",
+                "untitled_heading": defaults.untitled_heading,
+            }
+        else:
+            values = {"untitled_heading": defaults.untitled_heading}
+            values.update(_LANGUAGE_VALUES.get(lang_code, {}))
+        return replace(self, lang_code=lang_code, rtl=lang_code == "ar", **values)
 
     def generate_namespace_regex(self, *namespaces: int) -> str:
         """All names of the given namespaces as a regex alternation, e.g. "File|Image".
@@ -265,6 +293,45 @@ class SiteConfig:
     def namespaces_case_insensitive(self) -> Mapping[int, str]:
         """Variables.NamespacesCaseInsensitive: regex text matching each namespace prefix."""
         return {ns: "(?i:" + self.generate_namespace_regex(ns) + r")\s*:" for ns in self.namespaces}
+
+
+# Variables.SetLanguageSpecificValues: per-language values other than the summary tag.
+_LANGUAGE_VALUES: dict[str, dict[str, str]] = {
+    "ar": {"stub": "[^{}|]*?(?:[Ss]tub|بذرة|بذور)[^{}]*?", "typo_summary_tag": "الأخطاء المصححة: "},
+    "arz": {
+        "stub": "[^{}|]*?(?:[Ss]tub|تقاوى|بذرة)[^{}]*?",
+        "typo_summary_tag": "الأخطاء المصححة: ",
+    },
+    "bn": {"typo_summary_tag": "বানান সংশোধন: "},
+    "cs": {"stub": "[^{}|]*?([Pp]ahýl)"},
+    "cy": {"stub": "[^{}|]*?([Ss]tub|[Εe]ginyn[^{}]*?)"},
+    "de": {"typo_summary_tag": "Schreibweise: "},
+    "el": {"stub": "[^{}|]*?([Ss]tub|[Εε]πέκταση)", "sect_stub": r"\{\{θέματος"},
+    "eo": {"typo_summary_tag": "Skribmaniero: "},
+    "hy": {"stub": "[^{}|]*?([Ss]tub|Անավարտ|Զարգացնել[^{}]*?)"},
+    "it": {"stub": "(DUMMYTEMPLATE)"},
+    "pl": {"sect_stub": r"\{\{[Ss]ek"},
+    "ru": {"stub": "[^{}]*?(?:[Ss]tub|[Зз]аготовка)"},
+    "sco": {"stub": "(Stub/[^{}|]+|[^{}|]*?[Ss]tub)"},
+    "sl": {"stub": "(?:[^{}]*?[Ss]tub|[Šš]krbina[^{}]*?)"},
+    "sq": {
+        "typo_summary_tag": "[[WP:AWB/T|përmirësime tipografike]]: ",
+        "stub": "(?:[^{}]*?[Cc]ung[^{}]*?)",
+    },
+    "sr": {"untitled_heading": "Први поднаслов"},
+    "sv": {
+        "typo_summary_tag": "rättar stavfel: ",
+        "stub": r"(?:[^{}]*?[Ss]tub|[^{}]+?stub(?:[ \-][^{}]+)?)"
+        r"(?<![Ss]tubbmall|[Ss]ubstub|[Ss]tubavsnitt|[Uu]ncategorized stub)",
+    },
+    "tr": {"typo_summary_tag": "yazış şekli: "},
+    "uk": {
+        "stub": "[^{}|]*?(?:[Ss]tub|[Дд]оробити)",
+        "sect_stub": r"\{\{([Рp]озділ\-доробити|[Ss]ection[ \-]stub)",
+    },
+    "ur": {"typo_summary_tag": "درستی املا"},
+    "zh": {"stub": ".*?(?:小作品|[Ss]tub)", "untitled_heading": "無標題"},
+}
 
 
 _EN_NAMESPACES: dict[int, str] = {

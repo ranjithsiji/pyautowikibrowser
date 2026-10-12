@@ -687,6 +687,13 @@ class CategoryDefaultSortMixin:
     ) -> str:  # provided by Parsers
         raise NotImplementedError
 
+    def add_category_no_change(
+        self, new_category: str, article_text: str, article_title: str
+    ) -> tuple[str, bool]:
+        """AWB's overload AddCategory(..., out noChange): returns (text, no_change)."""
+        new_text = self.add_category(new_category, article_text, article_title)
+        return new_text, new_text == article_text
+
     def add_category(self, new_category: str, article_text: str, article_title: str) -> str:
         """Add a category (inside <noinclude> on templates) and sort the metadata."""
         from awb_l.core import tools
@@ -708,3 +715,10 @@ class CategoryDefaultSortMixin:
         self, article_text: str, article_title: str, parse_talk_page: bool = False
     ) -> str:
         return fix_people_categories(article_text, article_title, parse_talk_page)
+
+    def fix_people_categories_no_change(
+        self, article_text: str, article_title: str
+    ) -> tuple[str, bool]:
+        """AWB's overload FixPeopleCategories(..., out noChange): returns (text, no_change)."""
+        new_text = self.fix_people_categories(article_text, article_title)
+        return new_text, new_text == article_text

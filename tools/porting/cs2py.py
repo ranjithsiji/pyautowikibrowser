@@ -158,4 +158,5 @@ def main():
     sys.stdout.write("\n".join(out))
     for s in skipped: print("SKIPPED", *s, file=sys.stderr)
 
-main()
+if __name__ == "__main__":
+    main()

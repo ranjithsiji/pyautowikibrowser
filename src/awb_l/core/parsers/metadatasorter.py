@@ -757,7 +757,7 @@ def remove_stubs(article_text: str) -> tuple[str, str]:
         return article_text, ""
     stub_list: list[str] = []
     original = article_text
-    sect_stub = _R(r"\{\{[Ss]ect")
+    sect_stub = _R(site.sect_stub)  # AWB: Regex.IsMatch(m.Value, Variables.SectStub)
 
     def take(m: DotNetMatch) -> str:
         if not sect_stub.is_match(m.value):

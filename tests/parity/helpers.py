@@ -32,3 +32,28 @@ def cs_len(x: object) -> int:
     if isinstance(x, str):
         return len(x)
     return x.length  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def utc_month_year() -> str:
+    """System.DateTime.UtcNow.ToString("MMMM yyyy", BritishEnglish), e.g. "October 2026"."""
+    import datetime
+
+    from awb_l.core.site import EN_MONTH_NAMES
+
+    now = datetime.datetime.now(datetime.UTC)
+    return f"{EN_MONTH_NAMES[now.month - 1]} {now.year}"
+
+
+def set_project(lang_code: str, project: str) -> W.SiteRegexes:
+    """Variables.SetProject / SetProjectSimple: switch wiki. English Wikipedia gets AWB's full
+    English configuration; other wikis keep the current namespaces (AWB would load them)."""
+    from dataclasses import replace
+
+    from awb_l.core.site import current_site
+
+    if (lang_code, project) == ("en", "wikipedia"):
+        site = SiteConfig.english()
+    else:
+        site = replace(current_site().with_lang_code(lang_code), project=project)
+    set_current_site(site)
+    return W.for_site(site)

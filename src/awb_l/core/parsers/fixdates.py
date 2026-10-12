@@ -37,7 +37,7 @@ _OfBetweenMonthAndYear = _R(
     + _Months
     + r" +of +(20\d\d|1[89]\d\d)\b(?<!\b[Tt]he {1,5}\w{3,15} {1,5}of {1,5}(20\d\d|1[89]\d\d))"
 )
-_OrdinalsInDatesAm = _R(
+OrdinalsInDatesAm = _R(
     r"(?<!\b[1-3]\d +)\b"
     + _Months
     + r" +([0-3]?\d)(?:st|nd|rd|th)\b(?<!\b[Tt]he +\w{3,10} +(?:[0-3]?\d)(?:st|nd|rd|th)\b)(?:( *(?:to|and|.|&.dash;) *[0-3]?\d)(?:st|nd|rd|th)\b)?"
@@ -47,7 +47,7 @@ _OrdinalsInDatesAmRange = _R(
     + _Months
     + r" +([0-3]?\d)(?:st|nd|rd|th)\b(?<!\b[Tt]he +\w{3,10} +(?:[0-3]?\d)(?:st|nd|rd|th)\b)(?:( *(?:to|and|.|&.dash;) *[0-3]?\d)(?:st|nd|rd|th)\b)*"
 )
-_OrdinalsInDatesInt = _R(
+OrdinalsInDatesInt = _R(
     r"(?:\b([0-3]?\d)(?:st|nd|rd|th)( *(?:to|and|.|&.dash;) *))?\b([0-3]?\d)(?:st|nd|rd|th) +"
     + _Months
     + r"\b(?<!\b[Tt]he +(?:[0-3]?\d)(?:st|nd|rd|th) +\w{3,10})"
@@ -57,7 +57,7 @@ _DateLeadingZerosInt = _R(r"\b" + r"0([1-9]) +" + _Months + r"\b")
 _MonthsRegex = _R(r"\b" + _MonthsNoGroup + r"\b.{0,30}")
 _MonthsRegexNoSecondBreak = _R(r"\b" + _MonthsNoGroup + r".{0,30}")
 _DayOfMonth = _R(r"(?<![Tt]he +)\b([1-9]|[12][0-9]|3[01])(?:st|nd|rd|th) +of +" + _Months)
-_Ordinal = _R(r"[0-9](?:st|nd|rd|th)")
+Ordinal = _R(r"[0-9](?:st|nd|rd|th)")
 _MonthsAct = _R(
     r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December) Act\b"
 )
@@ -70,9 +70,9 @@ _OrdinalQuick = _R(r"[0-9](?:<sup> *)?(st|nd|rd|th)", O.IGNORE_CASE)
 _OrdinalSuffix = _R(r"\b([1-3]?[0-9])(?:st|nd|rd|th)\b")
 
 # extra comma or space in American format dates
-_IncorrectCommaAmericanDates = _R(_Months + r"[ ,]*([1-3]?\d(?:–[1-3]?\d)?)[ ,]+([12]\d{3})\b")
+IncorrectCommaAmericanDates = _R(_Months + r"[ ,]*([1-3]?\d(?:–[1-3]?\d)?)[ ,]+([12]\d{3})\b")
 # comma between month and year in international format dates
-_IncorrectCommaInternationalDates = _R(
+IncorrectCommaInternationalDates = _R(
     r"\b((?:[1-3]?\d) +" + _MonthsNoGroup + r") *, *(1\d{3}|20\d{2})\b"
 )
 
@@ -158,8 +158,8 @@ class FixDatesMixin:
                     reparse = True
                     article_text = article_text.replace(before, after)
                     # catch after other fixes
-                    article_text = _IncorrectCommaAmericanDates.replace(article_text, "$1 $2, $3")
-                    article_text = _IncorrectCommaInternationalDates.replace(article_text, "$1 $2")
+                    article_text = IncorrectCommaAmericanDates.replace(article_text, "$1 $2, $3")
+                    article_text = IncorrectCommaInternationalDates.replace(article_text, "$1 $2")
                     break
             if not reparse:
                 return article_text
@@ -174,7 +174,7 @@ class FixDatesMixin:
             text = _OrdinalsInDatesAmRange.replace(
                 text, lambda m: _OrdinalSuffix.replace(m.value, "$1")
             )
-            text = _OrdinalsInDatesInt.replace(text, "$1$2$3 $4")
+            text = OrdinalsInDatesInt.replace(text, "$1$2$3 $4")
             text = _DayOfMonth.replace(text, "$1 $2")
         text = _DateLeadingZerosAm.replace(text, "$1 $2")
         return _DateLeadingZerosInt.replace(text, "$1 $2")
@@ -186,26 +186,26 @@ class FixDatesMixin:
         # performance: most articles need no change and hiding is slow on long ones, so first
         # check each date found in the raw text
         if not any(
-            self._fix_dates_a_internal(_before(article_text, m)) != _before(article_text, m)
+            self.fix_dates_a_internal(_before(article_text, m)) != _before(article_text, m)
             for m in _MonthsRegexNoSecondBreak.matches(article_text)
         ):
             return article_text
         article_text = self.hide_text_images(article_text)
-        article_text = self._fix_dates_a_internal(article_text)
+        article_text = self.fix_dates_a_internal(article_text)
         return self.add_back_text_images(article_text)
 
-    def _fix_dates_a_internal(self, text: str) -> str:
+    def fix_dates_a_internal(self, text: str) -> str:
         original = text
         has_dash = "-" in text or "–" in text
         if "," in text:
-            text = _IncorrectCommaInternationalDates.replace(text, "$1 $2")
+            text = IncorrectCommaInternationalDates.replace(text, "$1 $2")
         if has_dash:
             text = _SameMonthInternationalDateRange.replace(text, "$1–$2")
             text = _SameMonthAmericanDateRange.replace(text, _same_month_american_date_range_me)
             text = _LongFormatInternationalDateRange.replace(text, "$1–$3 $2 $4")
             text = _LongFormatAmericanDateRange.replace(text, "$1 $2–$3, $4")
         # after the date range fixes
-        text = _IncorrectCommaAmericanDates.replace(text, "$1 $2, $3")
+        text = IncorrectCommaAmericanDates.replace(text, "$1 $2, $3")
         # month range
         if has_dash:
             text = _EnMonthRange.replace(text, "$1–$2")
