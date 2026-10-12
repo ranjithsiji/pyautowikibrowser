@@ -74,9 +74,11 @@ src/awb_l/
     dotnet_regex.py  # translator for user rules and typo lists
     protect.py       # hide/restore comments, nowiki, templates, refs (AWB HideText, wAwB protection)
     parsers/         # port of WikiFunctions/Parse/*
-    site.py          # SiteConfig: per-wiki namespaces, magic words, months (regex half of Variables.cs)
+    site.py          # SiteConfig (regex half of Variables.cs) + current_site()/use_site()
+    textutil.py      # low-level Tools.cs helpers (case, URL encoding, template regex builders)
+    namespace.py     # port of Namespace.cs
     wikiregexes.py   # port of WikiRegexes.cs: static names at module level, per-wiki on SiteRegexes
-    tools.py         # port of Tools.cs (grows as callers are ported)
+    tools.py         # port of Tools.cs (minus HTTP/UI/file helpers)
     article.py       # one page's processing pipeline
   api/               # pywikibot wrapper: session, CheckPage, scheduler, edit/save
   lists/             # list providers (wrap pywikibot pagegenerators)
@@ -126,7 +128,16 @@ tests/
 - Keep AWB's names (`WikiRegexes.SimpleWikiLink` -> `wikiregexes.SimpleWikiLink`) so C# and Python can be
   read side by side. Static AWB fields are module-level; anything AWB rebuilds per wiki
   (`MakeLangSpecificRegexes` etc.) lives on `SiteRegexes`, obtained with `wikiregexes.for_site(site)`.
-- No global mutable state: AWB's `Variables` becomes an immutable `SiteConfig` passed explicitly.
+- AWB's global `Variables` becomes an immutable `SiteConfig`. Ported code reads the wiki from
+  `site.current_site()` (a `ContextVar`, English Wikipedia by default); `with use_site(cfg):` sets it for a
+  block, `set_current_site()` for a worker. Never mutate a `SiteConfig`; build a new one with `replace()`.
+- C# overloads become optional parameters, or one function that dispatches on argument types where AWB's
+  overloads differ in meaning (see `tools.rename_template`, `tools.remove_template_parameter`). `ref`/`out`
+  parameters become return values. Document each such mapping in the docstring.
+- Watch C#/Python semantic differences when porting by hand: `%` truncates in C# (`-1 % 2 == -1`),
+  `char.ToUpper` is one char in/one out (`textutil.char_upper`), `char.IsLetterOrDigit` is not `str.isalnum`
+  (`textutil.is_letter_or_digit`), `HttpUtility.UrlEncode` uses lower-case hex and `+` for spaces
+  (`textutil.url_encode`). Regex.Replace replacement strings interpret `$`: escape literal values (`$$`).
 - Mechanical conversion helpers live in `tools/porting/` (C# declarations -> Python, NUnit -> pytest). Their
   output is committed and then edited by hand. AWB sources are CRLF; multi-line test strings keep `\r\n`.
 - Ported test files keep every AWB assertion. Where an expectation changes on purpose (rule 3), add a comment.
@@ -148,7 +159,8 @@ Run tests and pyright before calling any task done.
 
 1. Done: skeleton, package layout, CI on ubuntu/macos/windows.
 2. Done: `core/rx.py` + `dotnet_regex.py` + multilingual Unicode tests; all enwiki typo rules compile.
-3. Port `WikiRegexes` (done: `RegexTests.cs` passes unchanged), `Tools` (started), then `Parse/*` with their tests.
+3. Port `WikiRegexes` (done: `RegexTests.cs` passes unchanged), `Tools` (done: `ToolsTests.cs` passes;
+   3 .NET/UI-only tests skipped), then `Parse/*` with their tests (next: `HideText.cs`, then `Parsers.cs`).
 4. `api/`: login, CheckPage, siteinfo, fetch/save, scheduler; `lists/` via pagegenerators.
 5. UI MVP: list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
 6. Settings import, custom Python modules, plugins.

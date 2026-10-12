@@ -1,20 +1,24 @@
 """Port of AWB UnitTests/RegexTests.cs: the parity suite for awb_l.core.wikiregexes.
 
-Converted mechanically from the C# (CRLF line endings in multi-line strings preserved).
-Expectations that differ from AWB on purpose are marked with a comment explaining why.
+Converted mechanically from the C# by tools/porting/nunit2py.py (CRLF line endings in multi-line
+strings preserved), then edited by hand. Expectations that differ from AWB on purpose are marked
+with a comment explaining why.
 """
 
-# ruff: noqa: E501, F841
+# ruff: noqa: E501, F841, F401
 # pyright: reportUnusedVariable=false
 
-from awb_l.core import tools
+import pytest
+
+from awb_l.core import namespace, tools
 from awb_l.core import wikiregexes as W
+from awb_l.core.dotnet_regex import DotNetOptions as O
+from awb_l.core.parsers.parsers import DateLocale
 from awb_l.core.rx import DotNetRegex
 from awb_l.core.site import Namespace, SiteConfig
 from tests.parity import regex_assert
+from tests.parity.helpers import EN, set_lang, set_site
 from tests.parity.regex_assert import check_match, check_matches
-
-EN = SiteConfig.english()
 
 
 def test_generate_namespace_regex() -> None:
@@ -78,7 +82,7 @@ def test_talkpage_header() -> None:
     check_matches(W.TalkHeaderTemplate, r"{{talkheadernav}}", 0)
 
 
-def test_skip_toctemplate_regex() -> None:
+def test_skip_toc_template_regex() -> None:
     S = W.for_site(EN)
     check_matches(W.SkipTOCTemplateRegex, r"{{Skip to talk}}", 1)
     check_matches(W.SkipTOCTemplateRegex, r"{{ skiptotoctalk}}", 1)
@@ -108,7 +112,7 @@ def test_wiki_project_banner_shell_template() -> None:
     )
 
 
-def test_blpunsourced() -> None:
+def test_blp_unsourced() -> None:
     S = W.for_site(EN)
     check_matches(W.BLPSources, r"{{BLP unsourced|foo}}", 1)
     check_matches(W.BLPSources, r"{{UnsourcedBLP|foo}}", 1)
@@ -521,7 +525,7 @@ def test_blockquote() -> None:
 def test_persondata() -> None:
     S = W.for_site(EN)
     assert S.Persondata.is_match(r"{{Persondata}}")
-    S = W.for_site(EN.with_lang_code(r"de"))
+    S = set_lang(r"de")
     assert S.Persondata.is_match(r"{{personendaten}}")
 
 
@@ -538,7 +542,7 @@ def test_use_dates_template_tests() -> None:
     assert W.UseDatesTemplate.match(r"{{use mdy dates}}").group(2) == r"use mdy dates"
 
 
-def test_isodates() -> None:
+def test_iso_dates() -> None:
     S = W.for_site(EN)
     check_match(W.ISODates, r"on 2009-12-11 a", True)
     check_match(W.ISODates, r"on 2009-12-01 a", True)
@@ -999,7 +1003,7 @@ def test_external_link() -> None:
     assert len(W.ExternalLinks.match(r"[http://google.co.uk Google]").group(1)) == 0
 
 
-def test_non_httpprotocols() -> None:
+def test_non_http_protocols() -> None:
     S = W.for_site(EN)
     regex_assert.no_match(W.NonHTTPProtocols, r"http://foo.com/asdfasdf/asdf.htm")
     regex_assert.no_match(W.NonHTTPProtocols, r"https://www.foo.com/asdfasdf/asdf.htm")
@@ -1055,7 +1059,7 @@ def test_non_httpprotocols() -> None:
     )
 
 
-def test_external_links_httponly() -> None:
+def test_external_links_http_only() -> None:
     S = W.for_site(EN)
     regex_assert.matches(W.ExternalLinksHTTPOnly, r"http://google.co.uk", r"http://google.co.uk")
     regex_assert.matches(
@@ -1204,62 +1208,58 @@ def test_curly_double_quotes() -> None:
     assert not (W.CurlyDoubleQuotes.is_match(r"very fast „"))
 
 
-def test_rfrom_modification() -> None:
+def test_r_from_modification() -> None:
     S = W.for_site(EN)
-    assert tools.nested_template_regex(W.RFromModificationList, S.site).is_match(
-        r"{{R from modification}}"
-    )
-    assert tools.nested_template_regex(W.RFromModificationList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromModificationList).is_match(r"{{R from modification}}")
+    assert tools.nested_template_regex(W.RFromModificationList).is_match(
         r"{{ r from modification}}"
     )
-    assert tools.nested_template_regex(W.RFromModificationList, S.site).is_match(r"{{R mod }}")
-    assert tools.nested_template_regex(W.RFromModificationList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromModificationList).is_match(r"{{R mod }}")
+    assert tools.nested_template_regex(W.RFromModificationList).is_match(
         r"{{R from alternate punctuation}}"
     )
-    assert tools.nested_template_regex(W.RFromModificationList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromModificationList).is_match(
         r"{{R from alternative punctuation}}"
     )
 
 
-def test_rfrom_title_without_diacritics() -> None:
+def test_r_from_title_without_diacritics() -> None:
     S = W.for_site(EN)
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R to accents}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{Redirects from title without diacritics}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
-        r"{{RDiacr}}"
-    )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(r"{{RDiacr}}")
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{r to unicode name}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{ R to unicode}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R to unicode  }}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R to title with diacritics}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R to diacritics}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R to diacritic}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R from name without diacritics}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R from title without diacritics}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R from original name without diacritics}}"
     )
-    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList, S.site).is_match(
+    assert tools.nested_template_regex(W.RFromTitleWithoutDiacriticsList).is_match(
         r"{{R without diacritics}}"
     )
 
@@ -1909,11 +1909,11 @@ def test_circa_template() -> None:
 
 def test_reference_list() -> None:
     S = W.for_site(EN)
-    S = W.for_site(EN.with_lang_code(r"fr"))
+    S = set_lang(r"fr")
     assert S.ReferenceList.is_match(r"{{références}}")
     assert S.ReferenceList.is_match(r"{{references}}")
     assert S.ReferenceList.is_match(r"{{reflist}}")
-    S = W.for_site(EN.with_lang_code(r"en"))
+    S = set_lang(r"en")
     assert S.ReferenceList.is_match(r"{{reflist}}")
     assert S.ReferenceList.is_match(r"{{references-small}}")
     assert S.ReferenceList.is_match(r"{{references-2column}}")
@@ -1921,13 +1921,13 @@ def test_reference_list() -> None:
 
 def test_simple_wiki() -> None:
     S = W.for_site(EN)
-    S = W.for_site(EN.with_lang_code(r"simple"))
+    S = set_lang(r"simple")
     assert S.SeeAlso.is_match(r"==Related pages==")
     assert S.SeeAlso.is_match(r"==related pages==")
     assert S.SeeAlso.is_match(r"==See also==")
     assert S.ExternalLinksHeader.is_match(r"==Other websites==")
     assert S.ExternalLinksHeader.is_match(r"==External links==")
-    S = W.for_site(EN.with_lang_code(r"en"))
+    S = set_lang(r"en")
     assert not (S.SeeAlso.is_match(r"==Related pages=="))
     assert S.SeeAlso.is_match(r"==See also==")
     assert S.ExternalLinksHeader.is_match(r"==External links==")

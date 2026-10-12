@@ -17,6 +17,13 @@ OPTS = {"IgnoreCase": "IGNORE_CASE", "Multiline": "MULTILINE", "Singleline": "SI
 
 class Unsupported(Exception): pass
 
+def snake(name):
+    """CamelCase -> snake_case, keeping acronyms together (HTMLListToWiki -> html_list_to_wiki)."""
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
+
+TOOLS_FIELDS = {"Diacritics", "SortKeyChars"}
+DATE_LOCALE = {"International": "INTERNATIONAL", "American": "AMERICAN", "ISO": "ISO", "Undetermined": "UNDETERMINED"}
+
 class E:
     """Expression parser producing Python source."""
     def __init__(self, toks): self.t, self.i = toks, 0
@@ -86,12 +93,15 @@ class E:
         simple = {"Value": "value", "Success": "success", "Index": "index", "Length": "length"}
         if name in simple: return f"{code}.{simple[name]}"
         if name == "Count": return f"len({code})"
-        meth = {"IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace",
+        meth = {"Add": None, "Equals": None, "Clear": None, "IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace",
                 "Contains": None, "Trim": "strip", "ToString": None, "Split": "split", "StartsWith": "startswith",
                 "EndsWith": "endswith", "Substring": None}
         if name not in meth: raise Unsupported("member " + name)
         a = self.args() if self.peek()[1] == "(" else []
         if name == "Contains": return f"({a[0]} in {code})"
+        if name == "Add": return f"{code}.append({a[0]})" if len(a) == 1 else f"{code}[{a[0]}] = {a[1]}"
+        if name == "Equals": return f"({code} == {a[0]})"
+        if name == "Clear": return f"{code}.clear()"
         if name == "ToString": return f"str({code})"
         if name == "Substring": return f"{code}[{a[0]}:]" if len(a) == 1 else f"{code}[{a[0]}:{a[0]} + {a[1]}]"
         return f"{code}.{meth[name]}({', '.join(a)})"
@@ -100,6 +110,8 @@ class E:
         if k in ("str", "vstr"):
             self.take(); return pylit(strval(k, t))
         if k == "num": self.take(); return t
+        if k == "chr": self.take(); return repr(strval("str", '"' + t[1:-1] + '"'))
+        if t == "-" and self.peek(1)[0] == "num": self.take(); return "-" + self.take()[1]
         if t == "(":
             self.take("("); e = self.expr(); self.take(")"); return f"({e})"
         if t in ("null",): self.take(); return "None"
@@ -118,6 +130,31 @@ class E:
             if what == "Regex":
                 a = self.args()
                 return f"DotNetRegex({', '.join(a)})"
+            if what in ("List", "Dictionary", "HashSet"):
+                self.take("<")
+                depth = 1
+                while depth:
+                    t2 = self.take()[1]
+                    depth += {"<": 1, ">": -1}.get(t2, 0)
+                if self.peek()[1] == "(":
+                    a = self.args()
+                    if self.peek()[1] != "{":
+                        return f"list({a[0]})" if a else ("{}" if what == "Dictionary" else "[]")
+                self.take("{")
+                items = []
+                while self.peek()[1] != "}":
+                    if what == "Dictionary" and self.peek()[1] == "[":
+                        self.take("["); k = self.expr(); self.take("]"); self.take("="); v = self.expr()
+                        items.append(f"{k}: {v}")
+                    elif what == "Dictionary" and self.peek()[1] == "{":
+                        self.take("{"); k = self.expr(); self.take(","); v = self.expr(); self.take("}")
+                        items.append(f"{k}: {v}")
+                    else:
+                        items.append(self.expr())
+                    if self.peek()[1] == ",": self.take(",")
+                self.take("}")
+                if what == "Dictionary": return "{" + ", ".join(items) + "}"
+                return "[" + ", ".join(items) + "]"
             raise Unsupported("new " + what)
         if k == "id":
             self.take()
@@ -134,7 +171,28 @@ class E:
             if head == "Namespace": return f"Namespace.{NS[rest]}"
             if head == "RegexOptions": return f"O.{OPTS[rest]}"
             if t == "Tools.NestedTemplateRegex":
-                a = self.args(); return f"tools.nested_template_regex({a[0]}, S.site)"
+                a = self.args(); return f"tools.nested_template_regex({', '.join(a)})"
+            if head == "Tools":
+                name, _, more = rest.partition(".")
+                if name in TOOLS_FIELDS:
+                    code = f"tools.{name}"
+                else:
+                    a = self.args()
+                    code = f"tools.{snake(name)}({', '.join(a)})"
+                for part in filter(None, more.split(".")): code = self.member(code, part)
+                return code
+            if head == "Regex" and rest in ("IsMatch", "Match", "Matches", "Replace", "Split"):
+                a = self.args()
+                text, pat, extra = a[0], a[1], a[2:]
+                opts = [x for x in extra if x.startswith("O.")]
+                other = [x for x in extra if not x.startswith("O.")]
+                regex = f"DotNetRegex({pat}{', ' + opts[0] if opts else ''})"
+                meth = {"IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace", "Split": "split"}[rest]
+                return self.postfix(f"{regex}.{meth}({', '.join([text, *other])})")
+            if t.startswith("Parsers.DateLocale."):
+                return "DateLocale." + DATE_LOCALE[t.rsplit(".", 1)[1]]
+            if t == "Namespace.Determine":
+                a = self.args(); return f"namespace.determine({', '.join(a)})"
             if t == "Environment.NewLine": return '"\\r\\n"'
             if t == "string.Empty" or t == "String.Empty": return '""'
             if "." in t:
@@ -157,6 +215,10 @@ ASSERTS = {
     "Assert.AreEqual": lambda a: f"assert {a[1]} == {a[0]}" + (f", {a[2]}" if len(a) > 2 else ""),
     "ClassicAssert.AreEqual": lambda a: f"assert {a[1]} == {a[0]}" + (f", {a[2]}" if len(a) > 2 else ""),
     "ClassicAssert.GreaterOrEqual": lambda a: f"assert {a[0]} >= {a[1]}" + (f", {a[2]}" if len(a) > 2 else ""),
+    "ClassicAssert.IsNull": lambda a: f"assert {a[0]} is None" + (f", {a[1]}" if len(a) > 1 else ""),
+    "ClassicAssert.IsNotNull": lambda a: f"assert {a[0]} is not None" + (f", {a[1]}" if len(a) > 1 else ""),
+    "ClassicAssert.IsEmpty": lambda a: f"assert len({a[0]}) == 0" + (f", {a[1]}" if len(a) > 1 else ""),
+    "ClassicAssert.AreNotEqual": lambda a: f"assert {a[1]} != {a[0]}" + (f", {a[2]}" if len(a) > 2 else ""),
     "RegexAssert.Matches": lambda a: f"regex_assert.matches({', '.join(a)})",
     "RegexAssert.NoMatch": lambda a: f"regex_assert.no_match({', '.join(a)})",
     "RegexAssert.IsMatch": lambda a: f"regex_assert.is_match({', '.join(a)})",
@@ -172,6 +234,11 @@ def assert_that(e):
     if isx == "Is.EqualTo":
         e.take("("); exp = e.expr(); e.take(")")
         cond = f"{actual} == {exp}"
+        if e.peek()[1] == "." and e.peek(1)[1] == "IgnoreCase":
+            e.take(); e.take()
+            cond = f"({actual}).lower() == ({exp}).lower()"
+    elif isx == "Is.Not.Null": cond = f"{actual} is not None"
+    elif isx == "Is.Not.Empty": cond = f"len({actual}) > 0"
     elif isx == "Is.Empty": cond = f"len({actual}) == 0"
     elif isx == "Is.True": cond = f"{actual}"
     elif isx == "Is.False": cond = f"not ({actual})"
@@ -194,22 +261,34 @@ def statement(toks):
     elif t in ASSERTS:
         e.take(); out = ASSERTS[t](e.args())
     elif t == "Variables.SetProjectLangCode":
-        e.take(); a = e.args(); out = f"S = W.for_site(EN.with_lang_code({a[0]}))"
+        e.take(); a = e.args(); out = f"S = set_lang({a[0]})"
     elif t == "WikiRegexes.MakeLangSpecificRegexes":
         return None
+    elif t in ("List", "Dictionary", "HashSet", "IDictionary") and e.peek(1)[1] == "<":
+        e.take(); e.take("<"); depth = 1
+        while depth:
+            depth += {"<": 1, ">": -1}.get(e.take()[1], 0)
+        _, name = e.take(); e.take("="); out = f"{name} = {e.expr()}"
+    elif t == "string" and e.peek(1)[1] == "[]" and e.peek(3)[1] == "=":
+        e.take(); e.take(); _, name = e.take(); e.take("="); out = f"{name} = {e.expr()}"
     elif t in ("string", "var", "Regex", "int", "bool", "Match") and e.peek(1)[0] == "id" and e.peek(2)[1] == "=":
         e.take(); _, name = e.take(); e.take("="); out = f"{name} = {e.expr()}"
         while e.peek()[1] == ",":
             e.take(); _, name = e.take(); e.take("="); out += f"\n{name} = {e.expr()}"
+    elif t.startswith("Variables.") and e.peek(1)[1] == "=":
+        e.take(); e.take("=")
+        out = f"S = set_site({snake(t.split('.', 1)[1])}={e.expr()})"
+    elif t == "SiteMatrix.Languages" and e.peek(1)[1] == "=":
+        e.take(); e.take("=")
+        out = f"S = set_site(interwiki_languages=frozenset({e.expr()}))"
     elif k == "id" and e.peek(1)[1] == "=" and e.peek(2)[1] != "=":
         e.take(); e.take("="); out = f"{t} = {e.expr()}"
+    elif k == "id" and (t.endswith(".Add") or t.endswith(".Clear") or t.startswith("Tools.")):
+        out = e.expr()
     else:
         raise Unsupported(f"statement {toks[:4]}")
     if e.i != len(e.t): raise Unsupported(f"trailing {e.t[e.i:e.i+4]}")
     return out
-
-def snake(name):
-    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
 
 def main():
     src = open(sys.argv[1], encoding="utf-8-sig", newline="").read()

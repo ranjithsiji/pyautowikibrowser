@@ -33,7 +33,7 @@ from collections.abc import Iterable
 from awb_l.core.dotnet_regex import DotNetOptions as O
 from awb_l.core.rx import DotNetRegex, escape
 from awb_l.core.site import Namespace, SiteConfig
-from awb_l.core.tools import first_difference, nested_template_regex, template_name_regex
+from awb_l.core.textutil import first_difference, nested_template_regex, template_name_regex
 
 _R = DotNetRegex
 

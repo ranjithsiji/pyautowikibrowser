@@ -13,12 +13,16 @@
 # Copyright (C) 2007 Martin Richards and the AutoWikiBrowser contributors (GPL-2.0-or-later).
 """Per-wiki settings that regexes and parsers depend on (the regex-relevant half of Variables).
 
-A SiteConfig is immutable; build one per wiki (from siteinfo, in awb_l.api) and pass it in.
+A SiteConfig is immutable; build one per wiki (from siteinfo, in awb_l.api). Code that AWB wrote
+against the global Variables reads current_site() instead; use_site() sets it for a block. The
+current site is a ContextVar, so worker threads and tasks each see their own.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import contextlib
+from collections.abc import Generator, Mapping
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
@@ -134,6 +138,12 @@ class SiteConfig:
     magic_words: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: _frozen({}))
     month_names: tuple[str, ...] = EN_MONTH_NAMES
     stub: str = "[^{}|]*?[Ss]tub"
+    script_path: str = "/w"
+    # Wikis sorting categories by Unicode collation (uca-*): sort keys keep their diacritics.
+    unicode_category_collation: bool = False
+    # Interwiki language codes (SiteMatrix.Languages). awb_l.api fills this from the site matrix;
+    # the default is the set AWB's unit tests use.
+    interwiki_languages: frozenset[str] = frozenset({"ar", "en", "ru", "sq"})
 
     def __post_init__(self) -> None:
         for ns, name in self.namespaces.items():
@@ -158,8 +168,15 @@ class SiteConfig:
                 tuple(self.magic_words.items()),
                 self.month_names,
                 self.stub,
+                self.script_path,
+                self.unicode_category_collation,
+                self.interwiki_languages,
             )
         )
+
+    @property
+    def is_wikipedia_en(self) -> bool:
+        return self.project == "wikipedia" and self.lang_code == "en"
 
     @property
     def url_long(self) -> str:
@@ -204,3 +221,31 @@ _EN_NAMESPACES: dict[int, str] = {
     100: "Portal:",
     101: "Portal talk:",
 }
+
+
+_ENGLISH = SiteConfig()
+_current: ContextVar[SiteConfig] = ContextVar("awb_l_site", default=_ENGLISH)
+
+
+def current_site() -> SiteConfig:
+    """The wiki being worked on (AWB's Variables). English Wikipedia unless set with use_site."""
+    return _current.get()
+
+
+def set_current_site(site: SiteConfig) -> Token[SiteConfig]:
+    """Make site the current wiki until reset_current_site(token) (or for good, in a worker)."""
+    return _current.set(site)
+
+
+def reset_current_site(token: Token[SiteConfig]) -> None:
+    _current.reset(token)
+
+
+@contextlib.contextmanager
+def use_site(site: SiteConfig) -> Generator[SiteConfig]:
+    """Make site the current wiki for the duration of the block."""
+    token = _current.set(site)
+    try:
+        yield site
+    finally:
+        _current.reset(token)
