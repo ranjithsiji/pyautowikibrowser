@@ -178,3 +178,14 @@ def test_dotnet_match_groups() -> None:
 def test_regex_concatenates_like_csharp() -> None:
     r = rx.DotNetRegex("a+")
     assert r + "b" == "a+b" and "b" + r == "ba+"
+
+
+def test_split_like_dotnet() -> None:
+    assert rx.DotNetRegex(",").split("a,b,,c") == ["a", "b", "", "c"]
+    assert rx.DotNetRegex("(-)").split("a-b") == ["a", "-", "b"]
+    # hidden recursion groups from balancing-group translation are not returned
+    r = rx.DotNetRegex(
+        r"\[(?>[^\[\]]+|\[(?<DEPTH>)|\](?<-DEPTH>))*(?(DEPTH)(?!))\]",
+        rx.DotNetOptions.EXPLICIT_CAPTURE,
+    )
+    assert r.split("x [a [b]] y") == ["x ", " y"]

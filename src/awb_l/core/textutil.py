@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import unicodedata
 from collections.abc import Iterable
+from html.entities import name2codepoint
 
 from awb_l.core import rx
 from awb_l.core.site import Namespace, SiteConfig, current_site
@@ -151,6 +152,58 @@ def url_decode(text: str) -> str:
             out.append(c)
             i += 1
     flush()
+    return "".join(out)
+
+
+# HTML 4.01's 252 named entities (exactly html.entities.name2codepoint) plus &apos;, as .NET knows.
+_HTML4_ENTITIES: dict[str, str] = {k: chr(v) for k, v in name2codepoint.items()} | {"apos": "'"}
+
+
+def _parse_decimal(s: str) -> int | None:
+    """int.TryParse(s, NumberStyles.Integer): optional surrounding whitespace and sign."""
+    t = s.strip()
+    if t[:1] in "+-":
+        sign, t = (-1 if t[0] == "-" else 1), t[1:]
+    else:
+        sign = 1
+    return sign * int(t) if t.isascii() and t.isdigit() else None
+
+
+def html_decode(text: str) -> str:
+    """HttpUtility.HtmlDecode: named HTML 4 entities and numeric references, semicolon required.
+
+    Unlike html.unescape: no HTML5-only names (&check; stays), no entities without ";".
+    """
+    if "&" not in text:
+        return text
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c != "&":
+            out.append(c)
+            i += 1
+            continue
+        semi = text.find(";", i + 1)
+        if semi > 0:
+            entity = text[i + 1 : semi]
+            if entity[:1] == "#":
+                value: int | None
+                if entity[1:2] in ("x", "X"):
+                    h = entity[2:]
+                    value = int(h, 16) if h and all(ch in _HEX for ch in h) else None
+                else:
+                    value = _parse_decimal(entity[1:]) if len(entity) > 1 else None
+                if value is not None and 0 <= value <= 0x10FFFF:
+                    out.append(chr(value))
+                    i = semi + 1
+                    continue
+            elif entity in _HTML4_ENTITIES:
+                out.append(_HTML4_ENTITIES[entity])
+                i = semi + 1
+                continue
+        out.append("&")
+        i += 1
     return "".join(out)
 
 

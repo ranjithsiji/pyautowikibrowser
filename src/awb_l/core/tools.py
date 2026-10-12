@@ -33,12 +33,13 @@ import ipaddress
 import unicodedata
 import urllib.parse
 from collections.abc import Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING
 
 from awb_l.core import namespace, rx
 from awb_l.core import wikiregexes as W
+from awb_l.core.parsers import parsers as _parsers
 from awb_l.core.parsers import templates as _templates
 from awb_l.core.parsers import wikilinks as _wikilinks
-from awb_l.core.parsers.parsers import DateLocale, canonicalize_title_aggressively
 from awb_l.core.rx import DotNetMatch, DotNetRegex
 from awb_l.core.site import Namespace, current_site
 from awb_l.core.textutil import (
@@ -61,6 +62,9 @@ from awb_l.core.textutil import (
     wiki_decode,
     wiki_encode,
 )
+
+if TYPE_CHECKING:
+    from awb_l.core.parsers.parsers import DateLocale
 
 __all__ = [
     "Diacritics",
@@ -141,7 +145,7 @@ def is_valid_title(article_title: str) -> bool:
     article_title = wiki_decode(article_title).strip()
     if not article_title or any(c in _INVALID_CHARS for c in article_title):
         return False
-    article_title = canonicalize_title_aggressively(article_title)
+    article_title = _parsers.canonicalize_title_aggressively(article_title)
     article_title = remove_namespace_string(article_title)
     return len(article_title) > 0 and not article_title.startswith(":")
 
@@ -419,6 +423,7 @@ def dates_count(text: str) -> dict[DateLocale, int]:
     possible = [
         d for d in _DateSplit.split(text) if len(d) > 4 and any(c in "123456789" for c in d)
     ]
+    DateLocale = _parsers.DateLocale
     return {
         DateLocale.ISO: sum(len(W.ISODatesQuick.matches(d)) for d in possible),
         DateLocale.INTERNATIONAL: sum(len(s.DayMonth.matches(d)) for d in possible),
@@ -659,6 +664,34 @@ def replace_once(text: str, old: str, new: str) -> tuple[str, bool]:
     if index < 0:
         return text, False
     return text[:index] + new + text[index + len(old) :], True
+
+
+_DIFF_EDIT_URL = r"/w(?:(?:iki)?/index\.php5?\?|/\?)title=(.*?)(?:&(?:action|diff|oldid|pe|offset|curid|redirect|type)=.*|$)"
+_HttpScheme = _R(r"https?://")
+
+
+def normalize_title_core(s: str) -> str:
+    """A page title from a wiki URL (history/diff/edit or /wiki/ form) or a section link.
+
+    Port of ListMaker.NormalizeTitleCore (WikiFunctions/Controls/Lists/ListMaker.cs).
+    """
+    site = current_site()
+    original = s
+    history_diff = _R(
+        _HttpScheme.replace(rx.escape(site.url), "(?:https?://|//)?") + _DIFF_EDIT_URL
+    )
+    s = history_diff.replace(s, lambda m: m.group(1).replace("+", "_"))
+    # assumption flaw (AWB's): every wiki uses /wiki/ as its article path
+    if "https:" in site.url:
+        s = s.replace("http://", "https://")  # support HTTP and HTTPS links
+    s = s.replace(site.url + "/wiki/", "").strip()
+    # section links
+    if s.find("#") > 0:
+        s = s[: s.index("#")]
+    if original != s:
+        s = wiki_decode(s)
+    # left-to-right marks
+    return s.replace("\u200e", "").strip()
 
 
 def first_chars(s: str, count: int) -> str:
@@ -928,6 +961,7 @@ def convert_date(input_date: str, locale: DateLocale, american_input_date: bool 
     if dt is None:
         return input_date
     month = _MONTH_NAMES[dt.month - 1]
+    DateLocale = _parsers.DateLocale
     match locale:
         case DateLocale.AMERICAN:
             return f"{month} {dt.day}, {dt.year:03d}"

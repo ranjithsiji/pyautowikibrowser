@@ -114,6 +114,28 @@ EN_MONTH_NAMES: tuple[str, ...] = (
 )
 
 
+# AWB's ProjectEnum, in its order: Variables compares positions (e.g. "<= commons").
+PROJECTS: tuple[str, ...] = (
+    "wikipedia",
+    "wiktionary",
+    "wikidata",
+    "wikisource",
+    "wikiquote",
+    "wikiversity",
+    "wikivoyage",
+    "wikibooks",
+    "wikinews",
+    "species",
+    "commons",
+    "meta",
+    "mediawiki",
+    "incubator",
+    "wikia",
+    "fandom",
+    "custom",
+)
+
+
 def _frozen[K, V](d: Mapping[K, V]) -> Mapping[K, V]:
     return MappingProxyType(dict(d))
 
@@ -144,6 +166,15 @@ class SiteConfig:
     # Interwiki language codes (SiteMatrix.Languages). awb_l.api fills this from the site matrix;
     # the default is the set AWB's unit tests use.
     interwiki_languages: frozenset[str] = frozenset({"ar", "en", "ru", "sq"})
+    # Titles that really contain underscores (Variables.UnderscoredTitles), loaded by awb_l.api.
+    underscored_titles: frozenset[str] = frozenset()
+    # Appended to edit summaries (Variables.SummaryTag), localised per wiki.
+    summary_tag: str = " using [[Project:AWB|AWB]]"
+    # Interwiki ordering lists ([[WP:AWB/IW]]); defaults are AWB's unit-test values.
+    interwiki_local_alpha: tuple[str, ...] = ("ar", "de", "en", "ru", "sq")
+    interwiki_local_first: tuple[str, ...] = ("ar", "de", "en", "ru", "sq")
+    interwiki_alpha: tuple[str, ...] = ("ar", "de", "en", "ru", "sq")
+    interwiki_alpha_en_first: tuple[str, ...] = ("en", "ar", "de", "ru", "sq")
 
     def __post_init__(self) -> None:
         for ns, name in self.namespaces.items():
@@ -171,8 +202,30 @@ class SiteConfig:
                 self.script_path,
                 self.unicode_category_collation,
                 self.interwiki_languages,
+                self.underscored_titles,
+                self.summary_tag,
+                self.interwiki_local_alpha,
+                self.interwiki_local_first,
+                self.interwiki_alpha,
+                self.interwiki_alpha_en_first,
             )
         )
+
+    @property
+    def _project_index(self) -> int:
+        return (
+            PROJECTS.index(self.project) if self.project in PROJECTS else PROJECTS.index("custom")
+        )
+
+    @property
+    def is_wikimedia_project(self) -> bool:
+        """Variables.IsWikimediaProject: a project up to Commons in AWB's ordering."""
+        return self._project_index <= PROJECTS.index("commons")
+
+    @property
+    def is_wikimedia_monolingual_project(self) -> bool:
+        """Variables.IsWikimediaMonolingualProject: species, commons, meta, mediawiki, incubator."""
+        return PROJECTS.index("species") <= self._project_index < PROJECTS.index("wikia")
 
     @property
     def is_wikipedia_en(self) -> bool:

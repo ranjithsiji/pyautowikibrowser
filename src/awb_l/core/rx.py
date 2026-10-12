@@ -266,5 +266,24 @@ class DotNetRegex:
         return self.compiled.sub(repl, text, count=n, timeout=timeout)
 
     def split(self, text: str, *, timeout: float | None = None) -> list[str]:
-        """Regex.Split (captured groups are included in the result, as in .NET)."""
-        return [p or "" for p in self.compiled.split(text, timeout=timeout)]
+        """Regex.Split: the text between matches, plus what each .NET group captured.
+
+        Groups that exist only because of the translation (balancing-group recursion) are left
+        out, as .NET has no such captures. Groups that did not participate are skipped.
+        """
+        names = {v: k for k, v in self.compiled.groupindex.items()}
+        groups = sorted(
+            {
+                py
+                for py in self.translated.group_map.values()
+                if py and not names.get(py, "").startswith("_bal")
+            }
+        )
+        out: list[str] = []
+        pos = 0
+        for m in self.compiled.finditer(text, timeout=timeout):
+            out.append(text[pos : m.start()])
+            out.extend(m.group(g) for g in groups if m.start(g) >= 0)
+            pos = m.end()
+        out.append(text[pos:])
+        return out

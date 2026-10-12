@@ -5,7 +5,7 @@ TOKEN = re.compile(r'''
   (?P<istr>\$@?"(?:[^"\\]|\\.|"")*")
  |(?P<vstr>@"(?:[^"]|"")*")
  |(?P<str>"(?:[^"\\]|\\.)*")
- |(?P<chr>'(?:[^'\\]|\\.)')
+ |(?P<chr>'(?:[^'\\]|\\x[0-9a-fA-F]{1,4}|\\u[0-9a-fA-F]{4}|\\.)')
  |(?P<num>\d+)
  |(?P<id>@?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)
  |(?P<ws>\s+|//[^\n]*|/\*.*?\*/)
@@ -25,7 +25,7 @@ def tokens(s):
 def strval(kind, text):
     if kind == "vstr": return text[2:-1].replace('""', '"')
     body = text[1:-1]
-    return re.sub(r'\\(u[0-9a-fA-F]{4}|.)', lambda m: {'n':'\n','r':'\r','t':'\t','\\':'\\','"':'"',"'":"'",'0':'\0'}.get(m.group(1)) or chr(int(m.group(1)[1:],16)), body)
+    return re.sub(r'\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{1,4}|.)', lambda m: {'n':'\n','r':'\r','t':'\t','\\':'\\','"':'"',"'":"'",'0':'\0'}.get(m.group(1)) or chr(int(m.group(1)[1:],16)), body)
 
 def declarations(src):
     """Yield (modifiers+type, name, rhs tokens) for class-level field declarations."""

@@ -46,6 +46,7 @@ Why Python wins:
 | `.../TypoScan/`, `.../UsageStats/`, `.../Web/` | PHP server side, project website | Server protocols only; not ported |
 | `.../tags/`, `.../branches/` | Old releases | Ignore |
 | `/home/alphad13/Projects/mediawiki-extensions-WikiEditor` | MediaWiki WikiEditor (JS, GPL-2.0-or-later, 2026-10) | Editor toolbar: layout and `encapsulate` actions (`modules/jquery.wikiEditor.toolbar.config.js`), dialogs, translations in 273 languages (`i18n/`) |
+| `/home/alphad13/Projects/codemirror-mediawiki` | `@bhsd/codemirror-mediawiki` 4.7.1 (TS, GPL-2.0-or-later, 2026-10) | Highlighter: port the line-by-line stream tokenizer `src/token.ts` to a `QSyntaxHighlighter` (per-block state); its tests in `test/src/`. `mw/textSelection.ts` for `encapsulateSelection`; `matchBrackets`/`matchTag`/`fold`/`bidi` for later editor features |
 | `/home/alphad13/Projects/huggle3-qt-lx` | Huggle 3 (Qt C++, GPL-3.0) | Qt desktop patterns, packaging for 3 OSes |
 | wAwB gadget (`en.wikipedia.org/wiki/User:Ponor/wAwB`, JS, GPL) | In-browser AWB-like tool | Server-side diff/preview, protected regions, timed rule runs |
 
@@ -60,7 +61,7 @@ Key AWB sources: `WikiFunctions/Parse/*` (general fixes, ~15k lines), `WikiFunct
 | Env and deps | `uv` (`pyproject.toml`, `uv.lock`) |
 | UI | PySide6 (Qt 6 Widgets, LGPL) for lists, toolbars, menus, options, dialogs. Not QML |
 | Look and feel | Fusion style forced on every OS + one QSS stylesheet with light/dark colour tokens (`awb_l.ui.theme`). Rules stay direction-neutral for RTL. Fonts stay OS-provided for script coverage |
-| Wikitext editor | `QPlainTextEdit` + `QSyntaxHighlighter` fed by a Python wikitext tokenizer (pure, tested, outside `ui/`). Avoid QScintilla (weak bidi) and browser editors (Chromium complex-script bugs). Editor actions are Python functions over (text, selection) with unit tests; Qt only passes selection in and out |
+| Wikitext editor | `QPlainTextEdit` + `QSyntaxHighlighter` fed by a Python wikitext tokenizer ported from codemirror-mediawiki's `src/token.ts` (pure, tested, outside `ui/`). Avoid QScintilla (weak bidi) and browser editors (Chromium complex-script bugs). Editor actions are Python functions over (text, selection) with unit tests; Qt only passes selection in and out |
 | Editor toolbar | Built from data converted once from WikiEditor's toolbar config (sections, groups, tools, `encapsulate` actions, special characters from MediaWiki core); labels from WikiEditor's `i18n/` (273 languages); `encapsulate` semantics ported from core's `jquery.textSelection` |
 | Visual editing | "Visual" button opens the wiki's own VisualEditor (`?veaction=edit`) in the default browser. No embedded VisualEditor, no tiptap/ProseMirror (cannot round-trip wikitext) |
 | Regex | `regex` module only, through `awb_l.core.rx`. Never import `re` for rule matching |
@@ -173,7 +174,13 @@ Run tests and pyright before calling any task done.
 2. Done: `core/rx.py` + `dotnet_regex.py` + multilingual Unicode tests; all enwiki typo rules compile.
 3. Port `WikiRegexes` (done: `RegexTests.cs` passes unchanged), `Tools` (done: `ToolsTests.cs` passes;
    3 .NET/UI-only tests skipped), then `Parse/*` with their tests (next: `HideText.cs`, then `Parsers.cs`).
-4. `api/`: login, CheckPage, siteinfo, fetch/save, scheduler; `lists/` via pagegenerators.
-5. UI MVP (Qt widgets, Qt-native editor with WikiEditor toolbar): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
+4. `api/`: login, CheckPage, siteinfo, fetch/save, scheduler; `lists/` via pagegenerators. Wikidata: fetch items
+   (batched `wbgetentities`) for sitelinks (flag/remove local interwikis Wikidata already has, report conflicts),
+   P569/P570 birth/death dates (people categories, person detection, DEFAULTSORT), short description,
+   coordinates, authority control. Fetching lives in `api/`; `core/` functions take the data as plain inputs so
+   tests stay offline.
+5. UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
+   special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
+   config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
 6. Settings import, custom Python modules, plugins.
 7. Packaging, auto-update, translatewiki.net integration.

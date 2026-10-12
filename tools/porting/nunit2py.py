@@ -30,7 +30,26 @@ DATE_LOCALE = {"International": "INTERNATIONAL", "American": "AMERICAN", "ISO": 
 
 class E:
     """Expression parser producing Python source."""
-    def __init__(self, toks): self.t, self.i = toks, 0
+    def __init__(self, toks): self.t, self.i, self.out_args = toks, 0, []
+
+    def call_args(self):
+        """Arguments, collecting C# "out x" arguments into self.out_args instead."""
+        self.take("(")
+        out = []
+        while self.peek()[1] != ")":
+            if self.peek()[1] == "out":
+                self.take(); _, name = self.take(); self.out_args.append(name)
+            else:
+                out.append(self.expr())
+            if self.peek()[1] == ",": self.take(",")
+        self.take(")")
+        return out
+
+    @staticmethod
+    def with_outs(code, outs):
+        """f(a, out x) -> value of f, also binding x: AWB-L returns (value, x, ...) for these."""
+        binds = ", ".join(f"({o} := _t[{i + 1}])" for i, o in enumerate(outs))
+        return f"((_t := {code}), {binds})[0][0]"
     def peek(self, o=0):
         j = self.i + o
         return self.t[j] if j < len(self.t) else ("eof", "")
@@ -102,7 +121,9 @@ class E:
         simple = {"Value": "value", "Success": "success", "Index": "index"}
         if name in simple: return f"{code}.{simple[name]}"
         if name == "Count": return f"len({code})"
-        meth = {"Add": None, "Equals": None, "Clear": None, "IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace",
+        if name == "Keys": return f"list({code}.keys())"
+        if name == "Values": return f"list({code}.values())"
+        meth = {"Add": None, "Equals": None, "Clear": None, "ContainsKey": None, "ContainsValue": None, "IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace",
                 "Contains": None, "Trim": "strip", "ToString": None, "Split": "split", "StartsWith": "startswith",
                 "EndsWith": "endswith", "Substring": None}
         if name not in meth:
@@ -115,6 +136,8 @@ class E:
         if name == "Contains": return f"({a[0]} in {code})"
         if name == "Add": return f"{code}.append({a[0]})" if len(a) == 1 else f"{code}[{a[0]}] = {a[1]}"
         if name == "Equals": return f"({code} == {a[0]})"
+        if name == "ContainsKey": return f"({a[0]} in {code})"
+        if name == "ContainsValue": return f"({a[0]} in {code}.values())"
         if name == "Clear": return f"{code}.clear()"
         if name == "ToString": return f"str({code})"
         if name == "Substring": return f"{code}[{a[0]}:]" if len(a) == 1 else f"{code}[{a[0]}:{a[0]} + {a[1]}]"
@@ -185,6 +208,8 @@ class E:
                 else: raise Unsupported("WikiRegexes." + name)
                 for part in filter(None, more.split(".")): code = self.member(code, part)
                 return code
+            if head == "ProjectEnum":
+                return repr(rest)
             if head == "Namespace":
                 if rest.lower() in NS: return f"Namespace.{NS[rest.lower()]}"
                 a = self.args()
@@ -209,6 +234,19 @@ class E:
                 regex = f"DotNetRegex({pat}{', ' + opts[0] if opts else ''})"
                 meth = {"IsMatch": "is_match", "Match": "match", "Matches": "matches", "Replace": "replace", "Split": "split"}[rest]
                 return self.postfix(f"{regex}.{meth}({', '.join([text, *other])})")
+            if head in ("Parsers", "parser", "parser2", "Parser", "p") and rest and not t.startswith("Parsers.DateLocale."):
+                name, _, more = rest.partition(".")
+                obj = "genfixes" if head == "Parsers" else head
+                if self.peek()[1] == "(":
+                    a = self.call_args()
+                    code = f"{obj}.{snake(name)}({', '.join(a)})"
+                    if self.out_args:
+                        outs, self.out_args = self.out_args, []
+                        code = self.with_outs(code, outs)
+                else:
+                    code = f"{obj}.{snake(name)}"
+                for part in filter(None, more.split(".")): code = self.member(code, part)
+                return self.postfix(code)
             if t.startswith("Parsers.DateLocale."):
                 return "DateLocale." + DATE_LOCALE[t.rsplit(".", 1)[1]]
             if t == "Namespace.Determine":
@@ -265,6 +303,9 @@ def assert_that(e):
         cond = {"Does.Contain": f"{exp} in {actual}", "Does.Not.Contain": f"{exp} not in {actual}",
                 "Does.StartWith": f"{actual}.startswith({exp})", "Does.EndWith": f"{actual}.endswith({exp})",
                 "Is.Not.EqualTo": f"{actual} != {exp}"}[isx]
+    elif isx in ("Is.Not.SameAs", "Is.SameAs"):
+        e.take("("); exp = e.expr(); e.take(")")
+        cond = f"{actual} {'is not' if 'Not' in isx else 'is'} {exp}"
     elif isx == "Is.Not.Null": cond = f"{actual} is not None"
     elif isx == "Is.Not.Empty": cond = f"len({actual}) > 0"
     elif isx == "Is.Empty": cond = f"len({actual}) == 0"
@@ -280,6 +321,8 @@ def assert_that(e):
     return f"assert {cond}" + (f", {msg}" if msg else "")
 
 def statement(toks):
+    if len(toks) == 2 and toks[0][0] == "id" and toks[1][0] == "id":
+        return None  # bare declaration, e.g. "bool noChange;"
     if toks and toks[0][1] == "const":
         toks = toks[1:]
     e = E(toks)
@@ -303,6 +346,16 @@ def statement(toks):
         e.take(); _, name = e.take(); e.take("="); out = f"{name} = {e.expr()}"
         while e.peek()[1] == ",":
             e.take(); _, name = e.take(); e.take("="); out += f"\n{name} = {e.expr()}"
+    elif t == "Variables.AddUnderscoredTitles":
+        e.take(); a = e.args()
+        out = f"S = set_site(underscored_titles=current_site().underscored_titles | frozenset({a[0]}))"
+    elif t == "Variables.SetProjectSimple":
+        e.take(); a = e.args()
+        out = f"S = set_site(lang_code={a[0]}, project={a[1]})"
+    elif t in ("Variables.UnderscoredTitles.Add", "Variables.UnderscoredTitles.Remove"):
+        e.take(); a = e.args()
+        op = "|" if t.endswith("Add") else "-"
+        out = f"S = set_site(underscored_titles=current_site().underscored_titles {op} {{{a[0]}}})"
     elif t.startswith("Variables.") and e.peek(1)[1] == "=":
         e.take(); e.take("=")
         out = f"S = set_site({snake(t.split('.', 1)[1])}={e.expr()})"
@@ -322,6 +375,7 @@ def main():
     src = open(sys.argv[1], encoding="utf-8-sig", newline="").read()
     # drop preprocessor lines (#if DEBUG blocks are kept: AWB's tests run in DEBUG)
     src = re.sub(r"^\s*#(if|endif|else|region|endregion)\b.*$", "", src, flags=re.M)
+    src = re.sub(r"\bWikiFunctions\.(?:Parse\.)?", "", src)
     if len(sys.argv) > 4:
         # only the named test class
         start = src.index(f"class {sys.argv[4]}")
@@ -383,8 +437,9 @@ def main():
                     py = statement(st)
                     if py: lines.append(py)
                 fn = f"def test_{snake(name)}() -> None:\n" + "\n".join("    " + l for line in lines for l in line.split("\n")) + "\n"
-            except Unsupported as ex:
-                failed.append((name, str(ex)))
+            except Exception as ex:  # anything unexpected: this test only is not converted
+                failed.append((name, f"{type(ex).__name__}: {ex}"))
+                ex = Unsupported(f"{type(ex).__name__}: {ex}")
                 fn = (f"@pytest.mark.skip(reason={('not converted: ' + str(ex))[:90]!r})\n"
                       f"def test_{snake(name)}() -> None:\n    pass\n")
             out.append(fn)
