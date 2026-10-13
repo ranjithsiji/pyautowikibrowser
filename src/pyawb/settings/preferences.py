@@ -142,6 +142,9 @@ class FontChoice:
     diff: str = ""
 
 
+PASTE_MORE_SLOTS = 10
+
+
 @dataclass(frozen=True)
 class Preferences:
     theme: str = "system"  # system / light / dark
@@ -149,6 +152,8 @@ class Preferences:
     on_load: str = "diff"  # what to show when a page is loaded: the diff, or the edit box
     warn_on_exit: bool = True
     word_wrap: bool = True
+    # the edit box's Paste more ▸ texts (Ctrl+1 … Ctrl+0); AWB kept them in the settings file
+    paste_more: tuple[str, ...] = ("",) * PASTE_MORE_SLOTS
     fonts: Mapping[str, FontChoice] = field(default_factory=dict[str, FontChoice])
 
     def font_for(self, script: str) -> FontChoice:

@@ -27,6 +27,7 @@ import json
 import tempfile
 import time
 from collections import deque
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDockWidget,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -60,11 +62,11 @@ from pyawb import __version__, paths
 from pyawb.api import connect, credentials
 from pyawb.api.session import WikiSession
 from pyawb.api.typolist import fetch_english_typo_list, fetch_typo_list
-from pyawb.core import process, tools
+from pyawb.core import namespace, process, tools
 from pyawb.core.article import Article
-from pyawb.core.site import SiteConfig, current_site, use_site
+from pyawb.core.site import Namespace, SiteConfig, current_site, use_site
 from pyawb.editloop import EditLoop, LoadResult, LoopOptions, Mode, available_modes
-from pyawb.editor import mwconfig
+from pyawb.editor import editcommands, mwconfig
 from pyawb.editor.dialogs import SearchReplace
 from pyawb.editor.diffhtml import DiffColors
 from pyawb.editor.messages import Messages
@@ -78,6 +80,7 @@ from pyawb.settings import appconfig
 from pyawb.settings.preferences import Preferences, is_rtl_language, script_for_language
 from pyawb.ui import theme
 from pyawb.ui.diff_view import DiffView
+from pyawb.ui.edit_box_menu import EditBoxMenu, apply_edit
 from pyawb.ui.editor_dialogs import DIALOGS, EditorDialogs, Suggest
 from pyawb.ui.editor_toolbar import WikiEditorToolbar, select
 from pyawb.ui.highlighter import WikitextHighlighter
@@ -175,6 +178,9 @@ class MainWindow(QMainWindow):
         self.mode = Mode.READ_ONLY
         self.paused = False  # one page at a time: no automatic step after Save
         self.next_index = -1  # paused after a save: the page Next goes to
+        # AWB's LastArticle: the text at the last preview or save attempt, for "Replace text
+        # with last edit"; cleared after a save and when another page is loaded
+        self.last_text = ""
 
         # -- edit box (editor toolbar, this page's summary, the editor) --
         edit_box = QWidget(self)
@@ -236,6 +242,7 @@ class MainWindow(QMainWindow):
         # -- the diff, above the control and edit tabs; hidden until a page is loaded --
         self.diff = DiffView(self)
         self.diff.line_clicked.connect(self.go_to_line)
+        self.diff.line_double_clicked.connect(self.undo_line)
         self.diff.hide()
         bottom = QSplitter(Qt.Orientation.Horizontal, self)
         bottom.addWidget(self.options)
@@ -274,6 +281,7 @@ class MainWindow(QMainWindow):
         self._make_toolbar()
         self._make_statusbar()
         self._make_menus()
+        self.edit_box_menu = EditBoxMenu(self)
         self.apply_preferences(self.config.preferences)
         self._update_modes()
         self._update_counts()
@@ -936,7 +944,10 @@ class MainWindow(QMainWindow):
             self.skip_page(result.skip_reason or "")
             return
 
+        previous = self.current_title()
         self.current = result
+        if previous != (result.page.title if result.page else result.title):
+            self.last_text = ""
         self.editor.setPlainText(tools.convert_from_local_line_endings(result.text))
         self.editor.moveCursor(self.editor.textCursor().MoveOperation.Start)
         self.review_summary.setEditText(result.summary)
@@ -1001,6 +1012,136 @@ class MainWindow(QMainWindow):
             self.editor.setFocus()
             self.editor.centerCursor()
 
+    # -- edit box commands (AWB's mnuTextBox; menu in ui/edit_box_menu.py) ----------------------
+
+    def current_title(self) -> str | None:
+        if self.current is None:
+            return None
+        return self.current.page.title if self.current.page else self.current.title
+
+    def wiki_site(self) -> SiteConfig:
+        return self.session.site if self.session else current_site()
+
+    def is_sysop(self) -> bool:
+        return self.session is not None and self.session.user.is_sysop
+
+    def restrict_defaultsort(self) -> bool:
+        return self.opts.process.restrict_defaultsort_changes if self.opts else True
+
+    def set_word_wrap(self, on: bool) -> None:
+        if on != self.config.preferences.word_wrap:
+            self._save_preferences(replace(self.config.preferences, word_wrap=on))
+
+    def set_paste_more(self, texts: tuple[str, ...]) -> None:
+        self._save_preferences(replace(self.config.preferences, paste_more=texts))
+
+    def _save_preferences(self, prefs: Preferences) -> None:
+        config = replace(self.config, preferences=prefs)
+        try:
+            appconfig.save(config)
+        except OSError as e:
+            QMessageBox.warning(self, self.tr("Settings"), str(e))
+        self.config = config
+        self.apply_preferences(prefs)
+
+    def show_diff_on_load(self) -> None:
+        """After the text was replaced: show the diff if pages open on the diff."""
+        if self.config.preferences.on_load == "diff":
+            self.show_diff()
+
+    def reparse(self) -> None:
+        """Re-parse (F5): process the edited text again (ReparseEditBox)."""
+        if self.current is None or self.loop is None or self.opts is None or self.busy:
+            return
+        if self.editor.isReadOnly():
+            return
+        loop, result, opts, text = self.loop, self.current, self.opts, self._edited_text()
+        self._set_busy(True, self.tr("Processing page"))
+
+        def done(new: object) -> None:
+            self._set_busy(False, self.tr("Ready to save"))
+            if self.current is not result:
+                return
+            self.editor.setPlainText(tools.convert_from_local_line_endings(str(new)))
+            self.review_summary.setEditText(result.summary)
+            if result.article is not None:
+                with use_site(self.wiki_site()):
+                    self.start_tab.set_page_info(process.page_info(str(new), result.article))
+            self._report_timeouts()
+            self.show_diff()
+
+        run_task(lambda: loop.reparse(result, text, opts), done, self._step_failed)
+
+    def insert_category(self) -> None:
+        """Insert ▸ Category (Ctrl+T): ask for it, warn if it does not exist, add it, re-parse."""
+        if self.current is None or self.session is None or self.busy:
+            return
+        site = self.wiki_site()
+        cat_ns = site.namespaces.get(Namespace.CATEGORY, "Category:")
+        name, ok = QInputDialog.getText(self, self.tr("Category"), self.tr("Category name:"))
+        name = name.strip().strip("[]").strip()
+        if not ok or not name:
+            return
+        with use_site(site):
+            if namespace.determine(name) != Namespace.CATEGORY:
+                name = cat_ns + name
+        session = self.session
+
+        def checked(exists: object) -> None:
+            self._set_busy(False)
+            if not exists and (
+                QMessageBox.question(
+                    self,
+                    self.tr("Non-existent category"),
+                    self.tr("%1 does not exist. Add it to the page anyway?").replace("%1", name),
+                )
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+            with use_site(site):
+                apply_edit(self.editor, editcommands.add_category(self.editor.toPlainText(), name))
+            self.reparse()
+
+        def failed(error: Exception) -> None:
+            self._set_busy(False)
+            QMessageBox.warning(
+                self, self.tr("Category"), self.tr("Unable to check category existence")
+            )
+
+        self._set_busy(True, self.tr("Checking the category…"))
+        run_task(lambda: session.open(name, False).exists, checked, failed)
+
+    def bypass_redirects(self) -> None:
+        """Bypass all redirects (administrators): links to redirects go to their targets."""
+        if self.current is None or self.loop is None or self.busy:
+            return
+        loop, site = self.loop, self.wiki_site()
+        text = self.editor.toPlainText()
+        with use_site(site):
+            titles = editcommands.link_targets(text)
+        self._set_busy(True, self.tr("Checking %n link(s)…", "", len(titles)))
+
+        def done(targets: object) -> None:
+            self._set_busy(False, self.tr("Redirects bypassed"))
+            found: dict[str, str] = targets  # type: ignore[assignment]
+            with use_site(site):
+                new = editcommands.bypass_redirects(self.editor.toPlainText(), found)
+            apply_edit(self.editor, editcommands.whole_text(self.editor.toPlainText(), new))
+            self.show_diff_on_load()
+
+        run_task(lambda: loop.redirect_targets(titles), done, self._step_failed)
+
+    def undo_line(self, line: int) -> None:
+        """A double click on the diff: the changes on that line are undone."""
+        if self.current is None or self.current.article is None or self.editor.isReadOnly():
+            return
+        original = tools.convert_from_local_line_endings(self.current.article.original_article_text)
+        new = editcommands.undo_line_changes(original, self.editor.toPlainText(), line)
+        if new is not None:
+            apply_edit(self.editor, editcommands.whole_text(self.editor.toPlainText(), new))
+            self.go_to_line(line)
+            self.show_diff()
+
     def find_in_editor(self, text: str, is_regex: bool, case_sensitive: bool) -> None:
         """The Start tab's Find: the next match in the editor (.NET regex syntax via core.rx)."""
         content = self.editor.toPlainText()
@@ -1020,6 +1161,7 @@ class MainWindow(QMainWindow):
             return
         loop, result, text = self.loop, self.current, self._edited_text()
         site = self.session.site
+        self.last_text = self.editor.toPlainText()
         self._set_busy(True, self.tr("Getting the preview…"))
 
         def done(body: object) -> None:
@@ -1042,6 +1184,7 @@ class MainWindow(QMainWindow):
                 self.skip_page("Nothing to save - blank page")
                 return
         loop, result = self.loop, self.current
+        self.last_text = self.editor.toPlainText()  # kept in case the save fails
         summary = self.review_summary.currentText()
         minor, watch = self.minor.isChecked(), self.watch.currentData()
         self._set_busy(True, self.tr("Saving…"))
@@ -1053,6 +1196,7 @@ class MainWindow(QMainWindow):
 
     def _saved(self, _info: object) -> None:
         self._set_busy(False, self.tr("Saved"))
+        self.last_text = ""
         result = self.current
         self.edits += 1
         self.edit_rate.add()

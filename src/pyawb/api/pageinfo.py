@@ -43,3 +43,23 @@ def display_titles(transport: Transport, titles: Iterable[str]) -> dict[str, str
             if shown and shown != title and not page.get("missing"):
                 out[back.get(title, title)] = str(shown)
     return out
+
+
+def redirect_targets(transport: Transport, titles: Iterable[str]) -> dict[str, str]:
+    """title -> target (with "#section" where the redirect has one), for the titles that are
+    redirects. AWB opened each linked page in turn; here 50 titles go in each query."""
+    wanted = list(dict.fromkeys(titles))
+    out: dict[str, str] = {}
+    for start in range(0, len(wanted), BATCH):
+        batch = wanted[start : start + BATCH]
+        result: Mapping[str, Any] = transport.request(
+            {"action": "query", "titles": "|".join(batch), "redirects": True}
+        ).get("query", {})
+        back = {str(n["to"]): str(n["from"]) for n in result.get("normalized", ())}
+        for r in result.get("redirects", ()):
+            source = str(r["from"])
+            target = str(r["to"])
+            if r.get("tofragment"):
+                target += "#" + str(r["tofragment"])
+            out[back.get(source, source)] = target
+    return out

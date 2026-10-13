@@ -202,7 +202,7 @@ Run tests and pyright before calling any task done.
    implemented in `api/` in step 4. Deliberate difference: bold title (`parsers/boldtitle.py`) bolds the
    title only at the start of a word (AWB bolded `قط` inside `القط`), except in scripts written without
    spaces (Han, kana, Thai, ...); `tests/core/test_boldtitle_boundary.py`.
-4. Mostly done: `api/` (everything written against a `Transport` protocol; `PywikibotTransport` is the real one,
+4. Done: `api/` (everything written against a `Transport` protocol; `PywikibotTransport` is the real one,
    tests use a fake): siteinfo -> `SiteConfig` (namespaces, aliases, magic words, RTL, month names, summary tag,
    AWB config pages, interwiki order, site matrix), login with bot passwords (keychain via `api/credentials.py`),
    the CheckPage gate (`api/checkpage.py`, enforced in `WikiSession.save`), open/save with
@@ -213,9 +213,9 @@ Run tests and pyright before calling any task done.
    `api/connect.py` opens a session from a `config.toml` profile. The User-Agent contact is the tool page
    (`docs/wiki/PyAutoWikiBrowser.wikitext`, to be published at Wikipedia:PyAutoWikiBrowser). Open: whether PyAutoWikiBrowser requires its own entry in the global VersionJSON
    (`WikiSession(require_enabled_version=...)`, off for now) and may use the "AWB" change tag; OAuth; the edit
-   scheduler (delay between saves) belongs with the save loop in step 5; Wikidata dates/description not yet
-   used by the category and DEFAULTSORT fixes.
-5. In progress. Done: wikitext highlighting. `editor/tokenizer.py` is a line-for-line port of codemirror-mediawiki's
+   scheduler (delay between saves) is step 6 C4; Wikidata dates/description not yet used by the category and
+   DEFAULTSORT fixes.
+5. Done (the UI MVP): wikitext highlighting. `editor/tokenizer.py` is a line-for-line port of codemirror-mediawiki's
    `token.ts` (+ TeX/JSON sub-modes; LilyPond not ported) passing all 2717 upstream tokenizer tests
    (`tests/editor/test_tokenizer_parity.py`); deliberate difference: `\p{M}` added to word classes so Indic words
    stay whole. `ui/highlighter.py` runs it per block with the state kept on each block. WikiEditor toolbar:
@@ -240,14 +240,18 @@ Run tests and pyright before calling any task done.
    run, Make changes: `editloop.Mode`), Start/Stop, Previous/Pause/Next, Save/Skip, Preview/Diff and an
    x/N progress; done pages stay in the list marked saved/skipped. Settings menu (theme, interface
    language from Meta-Wiki's languageinfo, fonts per script, user profiles, preferences) saved in
-   config.toml. Start screen (ui/start_screen.py): interface language, wiki (Meta's open wikis),
-   fonts for its script, login (bot password; account password with the two-factor code asked by
-   pywikibot's clientlogin answered from the screen; the wiki's own login page in Qt WebEngine for
-   security keys/passkeys, cookies handed to pywikibot; Skip = offline), first list. Next: projects
-   (save/load), then bot mode with the save delay, the native word-level diff (wikidiff2 port); find &
-   replace rules are kept only for the session until project files.
-   UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
-   special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
-   config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
-6. Settings import, custom Python modules, plugins.
-7. Packaging, auto-update, translatewiki.net integration.
+   config.toml. Start screen (ui/start_screen.py): wiki (Meta's open wikis; the interface language
+   follows the system), fonts for its script (mandatory, with install help and user font files), login
+   (bot password; account password with the two-factor code asked by pywikibot's clientlogin answered
+   from the screen; the wiki's own login page in Qt WebEngine for security keys/passkeys, cookies handed
+   to pywikibot; Skip = read only), first list.
+6. In progress: AWB feature parity, every menu, dialog, tab and tool of AWB, following the order of work in
+   `docs/design/awb-feature-inventory.md` (inventory of the user manual, its four chapters (Database Scanner,
+   Find and replace, Regular expression, General fixes), the Commons manual screenshots and AWB's designer
+   files; each step names the AWB sources and manual chapter it must meet). Done: A1 (List menu, list context
+   menu, missing list sources), B1 (List filter), A2 (edit box context menu, Re-parse, diff double click
+   undoes a line). Next: A3 Options/View
+   menus, A4 Skip/Logs, B2-B3 dialogs, C tabs and bot mode, D projects (save/load, AWB settings import),
+   E tools (regex tester, list comparer/splitter, database scanner, Python modules, plugins), then the native
+   word-level diff (wikidiff2 port). Find & replace rules are kept only for the session until projects (D1).
+7. Packaging, auto-update, translatewiki.net integration (plan step F).

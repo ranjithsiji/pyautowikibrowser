@@ -22,9 +22,11 @@ from pyawb.editor.diffhtml import DiffColors, qt_diff_html, row_lines
 
 
 class DiffView(QTextBrowser):
-    """Shows the wiki's diff; a click on a line moves the editor there (line_clicked, 1-based)."""
+    """Shows the wiki's diff; a click on a line moves the editor there (line_clicked, 1-based),
+    a double click undoes the changes on that line (line_double_clicked)."""
 
     line_clicked = Signal(int)
+    line_double_clicked = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -54,16 +56,24 @@ class DiffView(QTextBrowser):
         body = f"<h2>{html.escape(title)}</h2>" + (f"<p>{html.escape(text)}</p>" if text else "")
         self.setHtml(f"<html><body>{body}</body></html>")
 
-    def mousePressEvent(self, e: QMouseEvent) -> None:
-        super().mousePressEvent(e)
+    def _line_at(self, e: QMouseEvent) -> int | None:
         if e.button() != Qt.MouseButton.LeftButton or not self._lines:
-            return
+            return None
         cursor = self.cursorForPosition(e.position().toPoint())
         table = cursor.currentTable()
         if table is None:
-            return
+            return None
         row = table.cellAt(cursor).row()
-        if 0 <= row < len(self._lines):
-            line = self._lines[row]
-            if line is not None:
-                self.line_clicked.emit(line)
+        return self._lines[row] if 0 <= row < len(self._lines) else None
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        super().mousePressEvent(e)
+        line = self._line_at(e)
+        if line is not None:
+            self.line_clicked.emit(line)
+
+    def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
+        super().mouseDoubleClickEvent(e)
+        line = self._line_at(e)
+        if line is not None:
+            self.line_double_clicked.emit(line)

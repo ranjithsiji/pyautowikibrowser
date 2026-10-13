@@ -196,13 +196,13 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | List: remove selected / all / duplicates / non-main | done | |
 | List: add selected from list ▸ (links, categories, transclusions… of the selected pages) | done | |
 | List: move to top / bottom; convert to/from talk; filter; save; sort (reverse) alphabetically | done | |
-| Edit box: word wrap, undo, cut, copy, paste, select all | partial (Qt's own menu) | A |
-| Edit box: paste more, save text to file, go to line | missing | A |
-| Edit box: insert ▸ (birth/death categories, category Ctrl+T), insert tag ▸ (DEFAULTSORT, disambig, wikify, cleanup, expand, speedy delete, clear, uncategorised, stub) | missing | A |
-| Edit box: convert list to `*` / `#`, unicodify selected, bypass all redirects (admins), fix all excess whitespace | missing | A |
-| Edit box: re-parse (F5), comment selected (Ctrl+K) | missing | A |
-| Edit box: open page / talk page / history / selection in browser | missing | A |
-| Edit box: replace text with last edit, undo all changes | missing | A |
+| Edit box: word wrap, undo, cut, copy, paste, select all | done | word wrap saved in config.toml |
+| Edit box: paste more, save text to file, go to line | done | paste more texts in config.toml until projects (D1) |
+| Edit box: insert ▸ (birth/death categories, category Ctrl+T), insert tag ▸ (DEFAULTSORT, disambig, wikify, cleanup, speedy delete, clear, disambiguation, uncategorised, stub) | done | `editor.editcommands` |
+| Edit box: convert list to `*` / `#`, unicodify selected, bypass all redirects (admins), fix all excess whitespace | done | redirects resolved 50 per query (`api.pageinfo.redirect_targets`) |
+| Edit box: re-parse (F5), comment selected | done | comment is Ctrl+Shift+K: Ctrl+K is WikiEditor's link dialog |
+| Edit box: open page / talk page / history / selection in browser | done | |
+| Edit box: replace text with last edit, undo all changes | done | |
 | History: open in browser, refresh | missing | C |
 | Logs: add selected to list, cut, copy, remove, select all/none, open page/diff/history in browser, clear, reset; skipped: filter (exclude) by reason | missing | A |
 
@@ -215,7 +215,7 @@ These items were missing from the tables above.
 
 | Where | Item | Status | Phase / notes |
 |---|---|---|---|
-| Diff | Single click on a line focuses the edit box there; **double click undoes all changes on that line** | partial (single click) | A |
+| Diff | Single click on a line focuses the edit box there; **double click undoes all changes on that line** | done | `editcommands.undo_line_changes` |
 | Diff | Persian AWB mirrors the whole window and the diff in RTL | done | `diffhtml` mirrors, Qt layout direction |
 | Toolbar | Show/hide control panel and show/hide parameters buttons; Delete (admins); False positive | missing | A (panel), C (delete) |
 | Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | partial (no timer, no notifications) | A |
@@ -226,7 +226,7 @@ These items were missing from the tables above.
 | List box | Text box + "+" button to add one title; page count; Remove; Filter | done | |
 | Logs context | Open diff in browser (Ctrl+Shift+D); Filter: Show only / Exclude (selected reasons) | missing | A |
 | Logging to file tab | Log to XHTML / wiki code, verbose, folder; upload logs to a wiki page (location `$USER/Logs`, category, job name, max lines, watch, open in browser); status | missing | D |
-| Edit box menu | Paste more ▸ 10 slots (Ctrl+1…Ctrl+0) + Configure…; Go to line ▸ text box; Insert tag ▸ `{{-stub}}` box | missing | A |
+| Edit box menu | Paste more ▸ 10 slots (Ctrl+1…Ctrl+0) + Configure…; Go to line ▸ text box; Insert tag ▸ `{{-stub}}` box | done | |
 | Edit box | Custom toolbar buttons added by plugins and modules (Persian screenshot) | missing | E |
 | Options menu | Use pre-parse mode Ctrl+Shift+E | missing | A |
 | Tools | C# Eval (run a snippet against the page) → Python console | missing | E |
@@ -284,7 +284,7 @@ running app with screenshots. One commit per step.
 | Step | Contents | AWB sources | Manual chapters to meet |
 |---|---|---|---|
 | A1 ✔ | **List**: List menu with shortcuts; list context menu (open page/history, cut/copy/paste, Select ▸, Remove ▸, Add selected to list from ▸, move to top/bottom, convert to/from talk, displaytitle, filter, save list in 4 formats, sort/reverse sort); keep alphabetized; add-one-title box; stop while making a list; missing sources (category user depth, user contribs with number, HTML scraper plain/advanced regex, CheckWiki URL/number) | `ListMaker.cs`, `ListBox2.cs`, `Lists/Providers/*` | User manual: Make list, list menus |
-| A2 | **Edit box**: context menu (word wrap, paste more + configure, save text to file, go to line, insert ▸ birth/death cats and category Ctrl+T, insert tag ▸, convert list to `*`/`#`, unicodify selected, bypass all redirects, fix all excess whitespace, re-parse F5, comment selected Ctrl+K, open page/talk/history/selection in browser, replace with last edit, undo all changes); diff double click undoes a line | `Main.cs` (mnuTextBox handlers), `ConfigurePasteMoreItems.cs`, `Tools.cs` | Find and replace: minor rules not applied on Re-parse; Regular expression: shortcut editing macros run by Re-parse |
+| A2 ✔ | **Edit box**: context menu (word wrap, paste more + configure, save text to file, go to line, insert ▸ birth/death cats and category Ctrl+T, insert tag ▸, convert list to `*`/`#`, unicodify selected, bypass all redirects, fix all excess whitespace, re-parse F5, comment selected Ctrl+K, open page/talk/history/selection in browser, replace with last edit, undo all changes); diff double click undoes a line | `Main.cs` (mnuTextBox handlers), `ConfigurePasteMoreItems.cs`, `Tools.cs` | Find and replace: minor rules not applied on Re-parse; Regular expression: shortcut editing macros run by Re-parse |
 | A3 | **Options menu** (all toggles wired to `ProcessOptions`/engine flags), pre-parse mode, apply changes automatically, highlight Find matches/errors, auto focus end; **View menu** (toolbar, control panel F11, enlarge edit box F10, edit box toolbar, false positives); Tools ▸ reset counts, invalidate cache; Help F1; status bar timer and talk-page notifications; tray; Start tab Delink selection, false positive button, Ctrl+G/Esc | `Main.cs`, `Article.cs` alerts | General fixes: the Options menu switches (restrict DEFAULTSORT, orphan tagging, MOS fixes, sort interwikis, reference tags) |
 | A4 | **Skip tab** extras (spam filter blocked, only cosmetic changes, no alerts, exists/doesn't/don't care radio); **Logs** context menu (add to list, cut/copy, remove, select, open page/diff/history, filter show only/exclude, clear, reset) | `LogControl.cs`, `Main.cs` skip checks | User manual: Skip tab, Logs |
 | B1 ✔ | **List filter** dialog (namespaces, title, set operations, sort, duplicates) | `ListFilterForm.cs` | Database Scanner: results Filter uses the same dialog |
@@ -314,7 +314,7 @@ API key), splash screen (start screen instead).
 | Normal settings: Clear, OK, Cancel; rows: find, replace with, case sensitive, regex, multiline, singleline, minor, after fixes, enabled, comment | done | |
 | `$1`, `$2`… in replacements; `\n` for newlines (plain and regex) | done | engine (`rules.findreplace`) |
 | Keywords `%%key%%`, `%%title%%`, `%%fullpagename%%`, `%%pagename%%`, `%%subpagename%%`, `%%basepagename%%`, `%%namespace%%`, `%%server%%`, `%%servername%%`, `%%scriptpath%%` | done | `tools.apply_key_words`, values checked against the manual's table |
-| Minor rules not applied on Re-parse (F5) | missing | A (with Re-parse) |
+| Minor rules not applied on Re-parse (F5) | n/a | AWB's source applies them; only "skip if no / only minor replacement" is off on Re-parse, as here |
 | Advanced settings (Replace Special): rule tree with New ▸ Rule / In template call / Template parameter and subrules; Name, Enabled (disabled in red), Type (entire text / inside template calls, nested), Find/Replace, regex, case, multiline, singleline, Apply # times, If: contains / not contains (+ options), Templates list (in template call), Rule menu (undo, redo, cut, copy, paste, delete, refresh colours), Test… | missing UI (engine `rules.replacespecial` done) | B |
 | Template substitution: templates to substitute (one per line; braces and namespace optional), ignore links…, expand recursively, include comment with template name, Clear, Reset, OK, Cancel | missing UI (engine `rules.substtemplates` done; expansion through `api` `expandtemplates`) | B |
 | Order: normal F&R → advanced → template substitution → general fixes and typos → F&R after fixes | done | `core.process.process_page` |
@@ -326,7 +326,7 @@ API key), splash screen (start screen instead).
 | .NET syntax: anchors, classes, `\p{…}`, groups, named groups, quantifiers (lazy, possessive-free), back references `\1` `\k<name>`, look-around, comments `(?#…)`, `$1` `${name}` in replacements | done | `core.dotnet_regex` translator; Python `regex` with better Unicode |
 | Options IgnoreCase, SingleLine, MultiLine, ExplicitCapture (check boxes and inline `(?imsnx-imsnx)` / `(?i:…)`) | done | |
 | Timeout per rule | done | rule 2 |
-| User-made shortcut editing macros (advanced rules applied by Re-parse) | missing (needs Re-parse) | A |
+| User-made shortcut editing macros (advanced rules applied by Re-parse) | done | Re-parse runs every rule |
 | Regex tester | missing | E |
 
 ### General fixes (Wikipedia:AutoWikiBrowser/General_fixes)

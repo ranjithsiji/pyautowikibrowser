@@ -24,6 +24,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass, field
 
+from pyawb.api import pageinfo
 from pyawb.api.models import PageInfo, PageTitleStatus, SaveInfo, WatchOptions
 from pyawb.api.session import WikiSession
 from pyawb.api.tagger import WikiTaggerLookups
@@ -222,6 +223,27 @@ class EditLoop:
                 summary, self.session.site, is_bot=self.session.user.is_bot, suppress=suppress_tag
             )
         return self.session.save(text, summary, minor=minor, watch=watch, page=page)
+
+    def reparse(self, result: LoadResult, text: str, opts: LoopOptions) -> str:
+        """Re-parse (F5, AWB's ReparseEditBox): the edited text processed again, without the
+        skip checks and without "skip if no/only minor replacement" (ProcessPage with
+        mainProcess false). Returns the new text; result.summary is brought up to date."""
+        article = result.article
+        if article is None:
+            raise ValueError("the page was not loaded")
+        with use_site(self.session.site):
+            article.awb_change_article_text("Reparse", text, False)
+            process.process_page(
+                article, opts.process, self.parsers, self.remove_text, main_process=False
+            )
+            result.summary = process.make_default_edit_summary(
+                article, opts.summary, article.article_text, opts.section_summary
+            )
+        return article.article_text
+
+    def redirect_targets(self, titles: list[str]) -> dict[str, str]:
+        """For Bypass all redirects: which of titles are redirects, and to where."""
+        return pageinfo.redirect_targets(self.session.transport, titles)
 
     def diff(self, result: LoadResult, text: str) -> str:
         """The wiki's diff of the current revision against text (HTML table rows)."""

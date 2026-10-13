@@ -40,7 +40,13 @@ from pathlib import Path
 from typing import Any
 
 from pyawb.paths import config_dir
-from pyawb.settings.preferences import ON_LOAD, THEMES, FontChoice, Preferences
+from pyawb.settings.preferences import (
+    ON_LOAD,
+    PASTE_MORE_SLOTS,
+    THEMES,
+    FontChoice,
+    Preferences,
+)
 
 CONFIG_FILE = "config.toml"
 
@@ -182,17 +188,28 @@ def _preferences(raw: Any, raw_fonts: Any) -> Preferences:
                     diff=str(fm.get("diff", "")),
                 )
     language = p.get("language", "")
+    raw_paste = p.get("paste_more", [])
+    paste: list[str] = (
+        [str(x) for x in raw_paste][:PASTE_MORE_SLOTS]  # pyright: ignore[reportUnknownVariableType]
+        if isinstance(raw_paste, list)
+        else []
+    )
+    paste += [""] * (PASTE_MORE_SLOTS - len(paste))
     return Preferences(
         theme=choice("theme", THEMES, d.theme),
         language=language if isinstance(language, str) else "",
         on_load=choice("on_load", ON_LOAD, d.on_load),
         warn_on_exit=flag("warn_on_exit", d.warn_on_exit),
         word_wrap=flag("word_wrap", d.word_wrap),
+        paste_more=tuple(paste),
         fonts=fonts,
     )
 
 
-def _toml_value(value: str | bool | int) -> str:
+def _toml_value(value: str | bool | int | tuple[str, ...]) -> str:
+    if isinstance(value, tuple):
+        # a JSON array of strings is a valid TOML inline array
+        return json.dumps(list(value), ensure_ascii=False)
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
@@ -209,7 +226,7 @@ def dumps(config: AppConfig) -> str:
     ]
     prefs = config.preferences
     lines += ["", "[preferences]"]
-    for key in ("theme", "language", "on_load", "warn_on_exit", "word_wrap"):
+    for key in ("theme", "language", "on_load", "warn_on_exit", "word_wrap", "paste_more"):
         lines.append(f"{key} = {_toml_value(getattr(prefs, key))}")
     for script, f in sorted(prefs.fonts.items()):
         lines += ["", f"[fonts.{json.dumps(script, ensure_ascii=False)}]"]

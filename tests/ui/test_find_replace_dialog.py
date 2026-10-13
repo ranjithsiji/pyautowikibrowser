@@ -1,6 +1,6 @@
 """The find and replace table."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QItemSelectionModel, Qt
 from pytestqt.qtbot import QtBot
 
 from pyawb.rules.findreplace import ReplacementRow
@@ -43,7 +43,12 @@ def test_move_delete_and_check_all(qtbot: QtBot) -> None:
     minor = [name for name, _ in COLUMNS].index("minor")
     d.set_column(minor, True)
     assert all(r.minor for r in d.rows())
-    d.table.selectRow(0)
+    # through the selection model: QAbstractItemView.selectRow follows the application's
+    # keyboard state, which earlier window tests can leave in a toggling state
+    d.table.selectionModel().select(
+        d.table.model().index(0, 0),
+        QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows,
+    )
     d.delete_rows()
     assert [r.find for r in d.rows()] == ["قط"]
     d.clear()
