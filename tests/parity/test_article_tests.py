@@ -1,4 +1,4 @@
-"""Port of the ArticleTests fixture in AWB UnitTests/MiscellaneousTests.cs: the Article class (awb_l.core.article).
+"""Port of the ArticleTests fixture in AWB UnitTests/MiscellaneousTests.cs: the Article class (awb_x.core.article).
 
 Converted mechanically from the C# by tools/porting/nunit2py.py (CRLF line endings in multi-line
 strings preserved), then edited by hand. Expectations that differ from AWB on purpose are marked
@@ -10,13 +10,13 @@ with a comment explaining why.
 
 import pytest
 
-from awb_l.core import genfixes, namespace, rx, tools
-from awb_l.core import wikiregexes as W
-from awb_l.core.dotnet_regex import DotNetOptions as O
-from awb_l.core.parsers.hidetext import HideText
-from awb_l.core.parsers.parsers import DateLocale
-from awb_l.core.rx import DotNetRegex
-from awb_l.core.site import Namespace, SiteConfig, current_site
+from awb_x.core import genfixes, namespace, rx, tools
+from awb_x.core import wikiregexes as W
+from awb_x.core.dotnet_regex import DotNetOptions as O
+from awb_x.core.parsers.hidetext import HideText
+from awb_x.core.parsers.parsers import DateLocale
+from awb_x.core.rx import DotNetRegex
+from awb_x.core.site import Namespace, SiteConfig, current_site
 from tests.parity import regex_assert
 from tests.parity.genfixes_base import genFixes
 from tests.parity.helpers import (
@@ -31,8 +31,8 @@ from tests.parity.helpers import (
 from tests.parity.regex_assert import check_match, check_matches
 
 parser = genfixes.Parsers()  # AWB's RequiresParser
-from awb_l.core.article import Article, CategorisationOptions  # noqa: E402
-from awb_l.rules.skip import create_comparer  # noqa: E402
+from awb_x.core.article import Article, CategorisationOptions  # noqa: E402
+from awb_x.rules.skip import create_comparer  # noqa: E402
 
 LongText = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse dictum ultrices augue. Fusce sem diam, vestibulum sit amet, vehicula id, congue a, nisl. Phasellus pulvinar posuere purus. Donec elementum justo mattis nulla. Sed a purus dictum lacus pharetra adipiscing. Nam non dui non ante viverra iaculis. Fusce euismod lacus id nulla vulputate gravida. Suspendisse lectus pede, tempus sed, tristique id, pharetra eget, urna. Integer mattis libero vel quam accumsan suscipit. Vivamus molestie dapibus est. Quisque quis metus eget nisl accumsan aliquet. Donec tempus pellentesque tellus. Aliquam lacinia gravida justo. Aliquam erat volutpat. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Mauris ultricies suscipit urna. Ut mollis tempor leo. Pellentesque fringilla mattis enim. Proin sapien enim, congue non, aliquet et, sollicitudin nec, mauris. Sed porta.\r\n\r\nCurabitur luctus mollis massa. Nullam consectetur mollis lacus. Suspendisse turpis. Fusce velit. Morbi egestas dui. Donec commodo ornare lorem. Vestibulum sodales. Curabitur egestas libero ut metus. Sed eget orci a ligula consectetur vestibulum. Cras sapien.\r\n\r\nSed libero. Ut volutpat massa. Donec nulla pede, porttitor eu, sodales et, consectetur nec, quam. Pellentesque vestibulum hendrerit est. Nulla facilisi. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Duis et nibh eu lacus iaculis pretium. Fusce sed turpis. In cursus. Etiam interdum augue. Morbi commodo auctor ligula. In imperdiet, neque nec hendrerit consequat, lacus purus tristique turpis, eu hendrerit ipsum ligula at libero. Duis varius nunc vel tortor. Praesent tempor. Nunc non pede at velit congue feugiat. Curabitur gravida, nisl quis mattis porttitor, purus nulla viverra dui, non suscipit augue nunc ac libero. Donec lacinia est non augue.\r\n\r\nNulla quam dui, tristique id, condimentum sed, sodales in, ante. Vestibulum vitae diam. Integer placerat ante non orci. Nulla gravida. Integer magna enim, iaculis ut, ornare dignissim, ultrices a, urna. Donec urna. Fusce fringilla, pede vitae pulvinar ullamcorper, est nisi eleifend ipsum, ac adipiscing odio massa vehicula neque. Sed blandit est. Morbi faucibus, nisl vel commodo vulputate, mi ipsum tincidunt sem, id ornare orci orci et velit. Morbi commodo sollicitudin ligula. Pellentesque vitae urna. Duis massa arcu, accumsan id, euismod eu, tincidunt et, odio. Phasellus purus leo, rhoncus sed, condimentum nec, vestibulum vel, lacus. In egestas, lectus vitae lacinia tristique, elit magna consequat risus, id sodales metus nulla ac pede. Suspendisse potenti.\r\n\r\nFusce massa. Nullam lacinia purus nec ipsum. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Suspendisse potenti. Proin augue. Donec mi magna, interdum a, elementum quis, bibendum sit amet, felis. Donec vel libero eget magna hendrerit ultrices. Suspendisse potenti. Sed scelerisque lacinia nisi. Quisque elementum, nunc nec luctus iaculis, ante quam aliquet orci, et ullamcorper dui ipsum at mi. Vestibulum a dolor id tortor posuere elementum. Sed mauris nisl, ultrices a, malesuada non, convallis ac, velit. Sed aliquam elit id metus. Donec malesuada, lorem ut pharetra auctor, mi risus viverra enim, vitae pulvinar urna metus at lorem. Vivamus id lorem. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Nulla facilisi. Ut vel odio. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Pellentesque lobortis sem.\r\n\r\nProin in odio. Pellentesque [[habitant]] [[morbi]] [[tristique]] senectus et netus et malesuada fames ac turpis egestas. Vivamus bibendum arcu nec risus. Nulla iaculis ligula in purus. Etiam vulputate nibh sit amet lectus. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse potenti. Suspendisse eleifend. Donec blandit nibh hendrerit turpis. Integer accumsan posuere odio. Ut commodo augue malesuada risus. Curabitur augue. Praesent volutpat nunc a diam. Nulla lobortis interdum dolor. Nunc imperdiet, ipsum ac tempor iaculis, nunc.\r\n"
 

@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from awb_l.lists import providers as P
-from awb_l.lists.pagegenerators import split_options
+from awb_x.lists import providers as P
+from awb_x.lists.pagegenerators import split_options
 
 from .fakes import FakeTransport
 
@@ -227,8 +227,8 @@ def test_split_generator_options() -> None:
 
 @pytest.mark.network
 def test_pagegenerators_against_wikipedia() -> None:  # pragma: no cover - needs internet
-    from awb_l.api.transport import pywikibot_site
-    from awb_l.lists.pagegenerators import PagegeneratorsListProvider
+    from awb_x.api.transport import pywikibot_site
+    from awb_x.lists.pagegenerators import PagegeneratorsListProvider
 
     provider = PagegeneratorsListProvider(pywikibot_site("en", "wikipedia"), limit=5)
     assert len(provider.make_list("-prefixindex:Wikipedia:AutoWikiBrowser/")) == 5

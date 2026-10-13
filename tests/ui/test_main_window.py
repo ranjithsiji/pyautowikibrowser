@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from pytestqt.qtbot import QtBot
 
-from awb_l.ui.main_window import MainWindow
+from awb_x.ui.main_window import MainWindow
 
 
 def test_window_opens_and_switches_to_rtl(qtbot: QtBot) -> None:
@@ -14,7 +14,7 @@ def test_window_opens_and_switches_to_rtl(qtbot: QtBot) -> None:
 
 
 def test_ensure_utf8_ctype_keeps_language() -> None:
-    from awb_l.ui.app import ensure_utf8_ctype
+    from awb_x.ui.app import ensure_utf8_ctype
 
     env = {"LANG": "en_IN"}
     chosen = ensure_utf8_ctype(env)

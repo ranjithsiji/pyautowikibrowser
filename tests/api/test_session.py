@@ -5,16 +5,16 @@ from typing import Any
 
 import pytest
 
-from awb_l.api import checkpage, siteinfo
-from awb_l.api.errors import (
+from awb_x.api import checkpage, siteinfo
+from awb_x.api.errors import (
     ApiException,
     CaptchaException,
     EditConflictException,
     LoggedOffException,
     MaxlagException,
 )
-from awb_l.api.models import PageTitleStatus, WatchOptions
-from awb_l.api.session import LoginException, NotApprovedException, WikiSession, md5
+from awb_x.api.models import PageTitleStatus, WatchOptions
+from awb_x.api.session import LoginException, NotApprovedException, WikiSession, md5
 
 from .fakes import AR_MONTHS, AR_SITEINFO, FakeTransport, allmessages, userinfo
 
@@ -278,9 +278,9 @@ def test_login_runs_checkpage() -> None:
     t.responses, t.pages = base.responses, base.pages
     session.transport = session.global_transport = t
     with pytest.raises(LoginException):
-        session.login("Alice@AWB-L", "wrong")
-    user = session.login("Alice@AWB-L", "secret")
-    assert user.name == "Alice" and t.logged_in_as == "Alice@AWB-L"
+        session.login("Alice@AWB-X", "wrong")
+    user = session.login("Alice@AWB-X", "secret")
+    assert user.name == "Alice" and t.logged_in_as == "Alice@AWB-X"
     assert session.can_save
     session.logout()
     assert not session.can_save and not session.user.is_logged_in

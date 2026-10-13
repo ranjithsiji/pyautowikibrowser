@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from awb_l.api.checkpage import (
+from awb_x.api.checkpage import (
     CheckPage,
     StatusResult,
     VersionPage,
@@ -13,7 +13,7 @@ from awb_l.api.checkpage import (
     parse_messages,
     usernames_equal,
 )
-from awb_l.api.models import UserInfo
+from awb_x.api.models import UserInfo
 
 VERSION = json.dumps(
     {

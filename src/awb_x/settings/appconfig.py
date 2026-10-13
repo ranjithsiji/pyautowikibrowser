@@ -1,0 +1,201 @@
+# AWB-X: cross-platform AutoWikiBrowser
+# Copyright (C) 2026 AWB-X contributors
+#
+# This program is free software: you can redistribute it and/or modify it under the terms of the
+# GNU General Public License as published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+# without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# Profiles follow AutoWikiBrowser WikiFunctions/Profiles (AWBProfile).
+"""The user's AWB-X configuration: config.toml in paths.config_dir().
+
+Profiles say which wiki to work on and which account to use, as AWB's login profiles did.
+Passwords are never written to this file: with remember_password the (bot) password is kept in
+the operating system's keychain (api.credentials), keyed by wiki and login name.
+
+    user_agent_contact = "https://en.wikipedia.org/wiki/Wikipedia:AWB-X"
+    default_profile = "Malayalam"
+
+    [[profiles]]
+    name = "Malayalam"
+    lang = "ml"
+    project = "wikipedia"
+    custom_url = ""                # a non-Wikimedia wiki's script path instead of lang/project
+    username = "Example@AWB-X"     # bot password login name (Special:BotPasswords)
+    remember_password = true
+    notes = ""
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tomllib
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, fields, replace
+from pathlib import Path
+from typing import Any
+
+from awb_x.paths import config_dir
+
+CONFIG_FILE = "config.toml"
+
+DEFAULT_USER_AGENT_CONTACT = "https://en.wikipedia.org/wiki/Wikipedia:AWB-X"
+"""The tool's documentation page, sent in the User-Agent so wiki operators can reach us
+(Wikimedia User-Agent policy). docs/wiki/AWB-X.wikitext is the text for that page."""
+
+
+class ConfigError(ValueError):
+    """config.toml could not be read."""
+
+
+@dataclass(frozen=True)
+class Profile:
+    """A wiki and an account (AWB's AWBProfile, without the stored password)."""
+
+    name: str
+    lang: str = "en"
+    project: str = "wikipedia"
+    custom_url: str = ""
+    username: str = ""
+    remember_password: bool = False
+    notes: str = ""
+
+    @property
+    def wiki_url(self) -> str:
+        """The script path, e.g. "https://ml.wikipedia.org/w/" (the keychain key)."""
+        from awb_x.api.siteinfo import wiki_url
+
+        url, url_end, _ = wiki_url(self.lang, self.project, self.custom_url)
+        return url + url_end
+
+    @property
+    def user_name(self) -> str:
+        """The account name without a bot password suffix ("Example" for "Example@AWB-X")."""
+        return self.username.split("@", 1)[0]
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    profiles: tuple[Profile, ...] = ()
+    default_profile: str = ""
+    user_agent_contact: str = DEFAULT_USER_AGENT_CONTACT
+
+    def profile(self, name: str | None = None) -> Profile | None:
+        """The named profile, or the default one, or the first."""
+        wanted = name if name is not None else self.default_profile
+        for p in self.profiles:
+            if p.name == wanted:
+                return p
+        return self.profiles[0] if self.profiles and name is None else None
+
+    def with_profile(self, profile: Profile, make_default: bool = False) -> AppConfig:
+        """Add or replace (by name) a profile."""
+        profiles = [p for p in self.profiles if p.name != profile.name]
+        profiles.append(profile)
+        return replace(
+            self,
+            profiles=tuple(profiles),
+            default_profile=profile.name if make_default else self.default_profile,
+        )
+
+    def without_profile(self, name: str) -> AppConfig:
+        return replace(
+            self,
+            profiles=tuple(p for p in self.profiles if p.name != name),
+            default_profile="" if self.default_profile == name else self.default_profile,
+        )
+
+
+_PROFILE_FIELDS = {f.name: f for f in fields(Profile)}
+
+
+def _profile(data: Mapping[str, Any]) -> Profile:
+    if not isinstance(data.get("name"), str) or not data["name"]:
+        raise ConfigError("every profile needs a name")
+    if "password" in data:
+        raise ConfigError(
+            f"profile {data['name']!r}: passwords are not read from config.toml; "
+            "use remember_password to keep it in the system keychain"
+        )
+    values: dict[str, Any] = {}
+    for key, value in data.items():
+        f = _PROFILE_FIELDS.get(key)
+        if f is None:
+            continue  # unknown keys from newer versions are ignored
+        expected = bool if f.type == "bool" else str
+        if not isinstance(value, expected):
+            raise ConfigError(f"profile {data['name']!r}: {key} must be a {expected.__name__}")
+        values[key] = value
+    return Profile(**values)
+
+
+def parse(text: str) -> AppConfig:
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(str(e)) from e
+    raw_profiles = data.get("profiles", [])
+    if not isinstance(raw_profiles, list):
+        raise ConfigError("profiles must be an array of tables ([[profiles]])")
+    profiles = tuple(_profile(p) for p in raw_profiles)  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+    names = [p.name for p in profiles]
+    if len(names) != len(set(names)):
+        raise ConfigError("profile names must be unique")
+    return AppConfig(
+        profiles=profiles,
+        default_profile=str(data.get("default_profile", "")),
+        user_agent_contact=str(data.get("user_agent_contact", DEFAULT_USER_AGENT_CONTACT)),
+    )
+
+
+def _toml_value(value: str | bool) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    # JSON string escapes are valid TOML basic-string escapes
+    return json.dumps(value, ensure_ascii=False)
+
+
+def dumps(config: AppConfig) -> str:
+    lines = [
+        "# AWB-X settings. Passwords are kept in the system keychain, never here.",
+        f"user_agent_contact = {_toml_value(config.user_agent_contact)}",
+        f"default_profile = {_toml_value(config.default_profile)}",
+    ]
+    for p in config.profiles:
+        lines += ["", "[[profiles]]"]
+        lines += [f"{f} = {_toml_value(getattr(p, f))}" for f in _PROFILE_FIELDS]
+    return "\n".join(lines) + "\n"
+
+
+def config_path() -> Path:
+    return config_dir() / CONFIG_FILE
+
+
+def load(path: Path | None = None) -> AppConfig:
+    """The configuration, or the defaults when there is no file yet."""
+    path = path or config_path()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return AppConfig()
+    return parse(text)
+
+
+def save(config: AppConfig, path: Path | None = None) -> Path:
+    """Write atomically (a crash never leaves a half-written file); readable by the user only."""
+    path = path or config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(dumps(config), encoding="utf-8")
+    if os.name != "nt":
+        tmp.chmod(0o600)
+    tmp.replace(path)
+    return path
+
+
+def profile_names(config: AppConfig) -> Sequence[str]:
+    return [p.name for p in config.profiles]

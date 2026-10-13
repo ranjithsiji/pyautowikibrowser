@@ -1,7 +1,7 @@
 """Advanced find and replace (AWB's ReplaceSpecial has no unit tests of its own)."""
 
-from awb_l.core.rx import DotNetOptions as O
-from awb_l.rules.replacespecial import (
+from awb_x.core.rx import DotNetOptions as O
+from awb_x.rules.replacespecial import (
     InTemplateRule,
     ReplaceSpecial,
     Rule,

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from awb_l.api.cache import ObjectCache
+from awb_x.api.cache import ObjectCache
 
 
 @pytest.fixture
@@ -120,8 +120,6 @@ def test_dont_store_null(cache: ObjectCache) -> None:
 
 
 def test_preset_caches_created(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    import awb_l.api.transport as transport
-
-    monkeypatch.setattr(transport, "default_data_dir", lambda: tmp_path / "pywikibot")
+    monkeypatch.setenv("AWB_X_HOME", str(tmp_path))
     monkeypatch.setattr(ObjectCache, "_global", None)
     assert ObjectCache.global_cache() is not None

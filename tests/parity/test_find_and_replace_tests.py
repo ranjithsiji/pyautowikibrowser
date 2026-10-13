@@ -1,15 +1,15 @@
 """Port of the FindAndReplaceTests fixture in AWB UnitTests/MiscellaneousTests.cs: find and replace
-rules (awb_l.rules.findreplace).
+rules (awb_x.rules.findreplace).
 
 Converted mechanically from the C# by tools/porting/nunit2py.py, then edited by hand: AWB's summary
-properties start as null, AWB-L's as "" (asserted as == "").
+properties start as null, AWB-X's as "" (asserted as == "").
 """
 
 # pyright: reportUnusedVariable=false
 
-from awb_l.core.dotnet_regex import DotNetOptions as O
-from awb_l.rules.findreplace import FindAndReplace as FindandReplace
-from awb_l.rules.findreplace import Replacement, arrow
+from awb_x.core.dotnet_regex import DotNetOptions as O
+from awb_x.rules.findreplace import FindAndReplace as FindandReplace
+from awb_x.rules.findreplace import Replacement, arrow
 
 
 def test_find_and_replace() -> None:

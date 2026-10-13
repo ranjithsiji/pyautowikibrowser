@@ -4,10 +4,10 @@ import copy
 
 import pytest
 
-from awb_l.api import siteinfo as si
-from awb_l.api.errors import BrokenResponseException, ReadApiDeniedException
-from awb_l.core import namespace, wikiregexes
-from awb_l.core.site import Namespace, use_site
+from awb_x.api import siteinfo as si
+from awb_x.api.errors import BrokenResponseException, ReadApiDeniedException
+from awb_x.core import namespace, wikiregexes
+from awb_x.core.site import Namespace, use_site
 
 from .fakes import AR_MONTHS, AR_SITEINFO, FakeTransport, allmessages
 

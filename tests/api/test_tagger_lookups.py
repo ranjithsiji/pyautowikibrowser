@@ -1,7 +1,7 @@
 """Tagger's wiki lookups and template expansion over the API."""
 
-from awb_l.api.tagger import WikiTaggerLookups, WikiTemplateExpander, count_incoming_links
-from awb_l.core.rx import DotNetRegex
+from awb_x.api.tagger import WikiTaggerLookups, WikiTemplateExpander, count_incoming_links
+from awb_x.core.rx import DotNetRegex
 
 from .fakes import FakeTransport
 

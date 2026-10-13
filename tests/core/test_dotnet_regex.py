@@ -1,9 +1,9 @@
 import pytest
 import regex
 
-from awb_l.core import rx
-from awb_l.core.dotnet_regex import DotNetOptions as O
-from awb_l.core.dotnet_regex import UnsupportedPatternError, translate
+from awb_x.core import rx
+from awb_x.core.dotnet_regex import DotNetOptions as O
+from awb_x.core.dotnet_regex import UnsupportedPatternError, translate
 
 
 def sub(find: str, replace: str, text: str, options: O = O.NONE) -> str:

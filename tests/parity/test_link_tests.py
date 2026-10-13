@@ -1,4 +1,4 @@
-"""Port of AWB UnitTests/LinkTests.cs: link fixes (awb_l.core.parsers.wikilinks and others).
+"""Port of AWB UnitTests/LinkTests.cs: link fixes (awb_x.core.parsers.wikilinks and others).
 
 Converted mechanically from the C# by tools/porting/nunit2py.py (CRLF line endings in multi-line
 strings preserved), then edited by hand. Expectations that differ from AWB on purpose are marked
@@ -10,12 +10,12 @@ with a comment explaining why.
 
 import pytest
 
-from awb_l.core import genfixes, namespace, tools
-from awb_l.core import wikiregexes as W
-from awb_l.core.dotnet_regex import DotNetOptions as O
-from awb_l.core.parsers.parsers import DateLocale
-from awb_l.core.rx import DotNetRegex
-from awb_l.core.site import Namespace, SiteConfig, current_site
+from awb_x.core import genfixes, namespace, tools
+from awb_x.core import wikiregexes as W
+from awb_x.core.dotnet_regex import DotNetOptions as O
+from awb_x.core.parsers.parsers import DateLocale
+from awb_x.core.rx import DotNetRegex
+from awb_x.core.site import Namespace, SiteConfig, current_site
 from tests.parity import regex_assert
 from tests.parity.genfixes_base import genFixes
 from tests.parity.helpers import EN, cs_len, set_lang, set_site

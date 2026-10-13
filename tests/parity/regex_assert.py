@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from awb_l.core.dotnet_regex import DotNetOptions
-from awb_l.core.rx import DotNetRegex
+from awb_x.core.dotnet_regex import DotNetOptions
+from awb_x.core.rx import DotNetRegex
 
 
 def _regex(pattern: DotNetRegex | str, options: DotNetOptions = DotNetOptions.NONE) -> DotNetRegex:

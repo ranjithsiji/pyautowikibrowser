@@ -30,7 +30,7 @@ def snake(name):
         return SNAKE_EXCEPTIONS[name]
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name).lower()
 
-# AWB overloads with "out bool noChange" that AWB-L ports as foo_no_change() -> (text, no_change)
+# AWB overloads with "out bool noChange" that AWB-X ports as foo_no_change() -> (text, no_change)
 NO_CHANGE_OVERLOADS = {"fix_syntax", "fix_headings", "cite_template_dates", "remove_category", "add_category",
     "bullet_external_links", "conversions", "fix_people_categories", "interwiki_conversions", "living_people",
     "remove_image", "replace_image", "unicodify"}
@@ -58,7 +58,7 @@ class E:
 
     @staticmethod
     def with_outs(code, outs):
-        """f(a, out x) -> value of f, also binding x: AWB-L returns (value, x, ...) for these."""
+        """f(a, out x) -> value of f, also binding x: AWB-X returns (value, x, ...) for these."""
         binds = ", ".join(f"({o} := _t[{i + 1}])" for i, o in enumerate(outs))
         return f"((_t := {code}), {binds})[0][0]"
     def peek(self, o=0):
@@ -69,7 +69,7 @@ class E:
         if text is not None and t != text: raise Unsupported(f"expected {text} got {t} near {self.t[self.i-3:self.i+3]}")
         self.i += 1; return k, t
     def ref_arg(self):
-        """ "ref x" argument: AWB-L returns (new x, value), see with_refs."""
+        """ "ref x" argument: AWB-X returns (new x, value), see with_refs."""
         self.take("ref")
         e = self.expr()
         self.ref_args.append(e)
@@ -77,7 +77,7 @@ class E:
 
     @staticmethod
     def with_refs(code, refs):
-        """f(ref x, ...) -> value of f, also rebinding x: AWB-L returns (new x, value)."""
+        """f(ref x, ...) -> value of f, also rebinding x: AWB-X returns (new x, value)."""
         if len(refs) != 1 or not refs[0].isidentifier():
             raise Unsupported(f"ref arguments {refs}")
         return f"((_t := {code}), ({refs[0]} := _t[0]))[0][1]"
@@ -300,7 +300,7 @@ class E:
                 if more:  # parser.Sorter.RemoveCats(...): the call is on the last member
                     code = f"{obj}.{snake(name)}"
                 elif self.peek()[1] == "(" and snake(name) == "tagger":
-                    # Tagger(..., [out noChange,] ref summary): AWB-L returns (text, [no_change,] summary)
+                    # Tagger(..., [out noChange,] ref summary): AWB-X returns (text, [no_change,] summary)
                     a = self.call_args()
                     refs, self.ref_args = self.ref_args, []
                     outs, self.out_args = self.out_args, []
@@ -312,7 +312,7 @@ class E:
                     code = self.wrap_refs(f"{obj}.{snake(name)}({', '.join(a)})")
                     if self.out_args:
                         outs, self.out_args = self.out_args, []
-                        if snake(name) in NO_CHANGE_OVERLOADS:  # separate function in AWB-L
+                        if snake(name) in NO_CHANGE_OVERLOADS:  # separate function in AWB-X
                             code = code.replace(f".{snake(name)}(", f".{snake(name)}_no_change(", 1)
                         code = self.with_outs(code, outs)
                 else:
@@ -483,7 +483,7 @@ def statement(toks):
         field = "template_redirects_text" if "Redirects" in t else "renamed_template_parameters_text"
         out = f'S = set_site({field}="")'
     elif t in ("WikiRegexes.TemplateRedirects", "WikiRegexes.RenamedTemplateParameters") and e.peek(1)[1] == "=":
-        # AWB-L keeps the rule page text in SiteConfig and parses it on use
+        # AWB-X keeps the rule page text in SiteConfig and parses it on use
         e.take(); e.take("="); e.take(); a = e.args()
         field = "template_redirects_text" if "Redirects" in t else "renamed_template_parameters_text"
         out = f"S = set_site({field}={a[0]})"
@@ -500,9 +500,9 @@ def statement(toks):
         out = f"S = set_site(magic_words={{k: v for k, v in current_site().magic_words.items() if k != {a[0]}}})"
     elif t == "Variables.NamespacesCaseInsensitive.Remove":
         e.take(); e.args()
-        return None  # AWB-L derives NamespacesCaseInsensitive from the namespace names; see Add
+        return None  # AWB-X derives NamespacesCaseInsensitive from the namespace names; see Add
     elif t == "Variables.NamespacesCaseInsensitive.Add":
-        # AWB sets the case-insensitive regex directly; AWB-L derives it from the namespace name,
+        # AWB sets the case-insensitive regex directly; AWB-X derives it from the namespace name,
         # so set the name the pattern stands for ("[Kk]ategori:" -> "Kategori:")
         e.take(); a = e.args()
         pat = eval(a[1])
