@@ -71,6 +71,7 @@ from pyawb.api import connect, credentials
 from pyawb.api.errors import SpamlistException
 from pyawb.api.models import SaveInfo
 from pyawb.api.session import WikiSession
+from pyawb.api.tagger import WikiTemplateExpander
 from pyawb.api.typolist import fetch_english_typo_list, fetch_typo_list
 from pyawb.core import namespace, process, tools
 from pyawb.core.article import Article
@@ -85,6 +86,8 @@ from pyawb.editor.toolbar import ToolbarSite, build_toolbar
 from pyawb.lists.listmaker import ArticleList
 from pyawb.lists.sources import WikiContext, wiki_context
 from pyawb.rules import typos
+from pyawb.rules.replacespecial import ReplaceSpecial
+from pyawb.rules.substtemplates import SubstTemplates
 from pyawb.rules.typos import RegExTypoFix
 from pyawb.settings import appconfig
 from pyawb.settings.preferences import Preferences, is_rtl_language, script_for_language
@@ -100,6 +103,7 @@ from pyawb.ui.list_maker import ListMaker
 from pyawb.ui.login_dialog import LoginDialog
 from pyawb.ui.logs_tab import LogsTab
 from pyawb.ui.options_panel import OptionsError, OptionsPanel
+from pyawb.ui.regex_tester import RegexTesterDialog
 from pyawb.ui.settings_dialog import SettingsDialog
 from pyawb.ui.start_screen import StartResult
 from pyawb.ui.start_tab import StartTab
@@ -533,6 +537,10 @@ class MainWindow(QMainWindow):
         self.options.general_fixes.toggled.connect(self.sort_interwikis_action.setEnabled)
 
         tools_menu = bar.addMenu(self.tr("&Tools"))
+        tools_menu.addAction(
+            action(self.tr("Regex tester"), self.open_regex_tester, "Ctrl+Shift+T")
+        )
+        tools_menu.addSeparator()
         tools_menu.addAction(action(self.tr("Reset saved/skipped counts"), self.reset_counts))
         tools_menu.addSeparator()
         tools_menu.addAction(action(self.tr("Invalidate cache"), self.invalidate_cache))
@@ -584,6 +592,12 @@ class MainWindow(QMainWindow):
             if on
             else self.tr("Pre-parse mode off")
         )
+
+    def open_regex_tester(self) -> None:
+        """Tools ▸ Regex tester, with the edit box's text to search (non-modal, as AWB)."""
+        tester = RegexTesterDialog(text=self.editor.toPlainText(), parent=self)
+        tester.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        tester.show()
 
     def reset_counts(self) -> None:
         """Tools ▸ Reset saved/skipped counts."""
@@ -1004,6 +1018,8 @@ class MainWindow(QMainWindow):
             slow += [r.find for r in getattr(p.find_and_replace, "timed_out", ())]
         if p is not None and isinstance(p.typos, RegExTypoFix):
             slow += p.typos.timed_out
+        if p is not None and isinstance(p.replace_special, ReplaceSpecial):
+            slow += [r.name for r in p.replace_special.timed_out]
         if slow:
             self.set_status(
                 self.tr("Rules skipped (too slow): %1").replace("%1", ", ".join(slow[:5]))
@@ -1336,6 +1352,9 @@ class MainWindow(QMainWindow):
         p.restrict_orphan_tagging = self.restrict_orphan_action.isChecked()
         p.no_mos_compliance_fixes = self.no_mos_action.isChecked()
         p.replace_reference_tags = self.replace_refs_action.isChecked()
+        subst = p.subst_templates
+        if isinstance(subst, SubstTemplates) and subst.expand_recursively and self.session:
+            subst.expand_template = WikiTemplateExpander(self.session.transport)
 
     def _pre_parsed(self, result: LoadResult) -> None:
         """Pre-parse mode: the page has changes, so it stays in the list (marked) and the

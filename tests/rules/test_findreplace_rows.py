@@ -38,3 +38,14 @@ def test_engine_from_rows_skips_empty_rows() -> None:
     assert len(far.replacements) == 2 and far.ignore_links and far.add_to_summary
     text, summary, major = far.multiple_find_and_replace("قط و x", "T", False)
     assert text == "هر و x" and major and "قط" in summary
+
+
+def test_next_search_match() -> None:
+    from pyawb.rules.findreplace import next_search_match
+
+    cells = [("foo", "bar"), ("baz", "foo bar"), ("x", "y")]
+    assert next_search_match(cells, "foo", -1) == (0, 0)
+    assert next_search_match(cells, "foo", 0) == (1, 1)
+    assert next_search_match(cells, "foo", 1) == (0, 0)  # wraps to the first match
+    assert next_search_match(cells, "Foo", 0) is None  # case-sensitive, as AWB
+    assert next_search_match(cells, "", 0) is None

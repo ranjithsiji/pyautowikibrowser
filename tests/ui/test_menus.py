@@ -52,7 +52,7 @@ def test_menu_bar(qtbot: QtBot) -> None:
         "Enlarge edit box",
         "Show edit box toolbar",
     ]
-    assert menu(w, "Tools") == ["Reset saved/skipped counts", "Invalidate cache"]
+    assert menu(w, "Tools") == ["Regex tester", "Reset saved/skipped counts", "Invalidate cache"]
     assert menu(w, "Help") == ["Help", "About PyAutoWikiBrowser"]
 
 

@@ -20,7 +20,7 @@ FindAndReplace.timed_out (AWB allowed 60 seconds and then failed the page).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from pyawb.core import rx, tools
@@ -317,3 +317,18 @@ def find_and_replace_from_rows(
         ignore_more=ignore_more,
         add_to_summary=add_to_summary,
     )
+
+
+def next_search_match(
+    cells: Sequence[tuple[str, str]], text: str, current_row: int
+) -> tuple[int, int] | None:
+    """The find and replace table's Search + Go (FindandReplace.btnSearch_Click): the first
+    (row, column) after current_row whose Find or Replace-with cell contains text, else the
+    first match from the top. cells: (find, replace with) per row. Case-sensitive, as AWB."""
+    if not text:
+        return None
+    found = [(r, c) for r, row in enumerate(cells) for c, value in enumerate(row) if text in value]
+    if not found:
+        return None
+    later = [f for f in found if f[0] > current_row]
+    return later[0] if later and current_row >= 0 else found[0]

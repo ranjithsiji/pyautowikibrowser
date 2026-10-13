@@ -112,7 +112,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 |---|---|---|
 | Make module (Ctrl+M; C#/VB) | missing | E: Python modules `(text, title, vars) -> text`, roadmap step 6 |
 | External processing (Ctrl+E) | missing | E |
-| Regex tester (Ctrl+Shift+T) | missing | E |
+| Regex tester (Ctrl+Shift+T) | done | `ui.regex_tester`, `rules.regextest` |
 | Database scanner (Ctrl+Shift+D) | missing | E |
 | List comparer | missing (model: `lists.listmaker.compare_lists`) | E |
 | List splitter | missing | E |
@@ -158,9 +158,9 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 |---|---|---|
 | Options: auto tag, general fixes, unicodify | done | |
 | Options: Auto changes skip options ("Skip if no…" dialog) | missing (engine `SkipOptions` exists) | B |
-| Options: find and replace normal settings | done | B: Search box in the dialog |
-| Options: advanced settings (Replace Special: rule tree, in-template rules, If tab, apply n times, Test) | missing (engine `rules.replacespecial` exists) | B |
-| Options: template substitution | missing (engine `rules.substtemplates` exists) | B |
+| Options: find and replace normal settings | done | with the Search box |
+| Options: advanced settings (Replace Special: rule tree, in-template rules, If tab, apply n times, Test) | done | `ui.replace_special_dialog` |
+| Options: template substitution | done | `ui.subst_templates_dialog`; expansion through `api.tagger.WikiTemplateExpander` |
 | Options: skip if no / only minor replacement | done | |
 | Options: RegexTypoFix, skip if no typo fixed | done | |
 | More: append/prepend (+ sort metadata), files, categories, `%%key%%` | done | |
@@ -234,11 +234,11 @@ These items were missing from the tables above.
 | Profiles dialog | Table ID / user / password saved? / default settings file / notes; Login, Add, Edit, Delete; quick login with "save this account / password" | done differently | start screen + Settings → User profiles; per-profile default project: D |
 | Disambig tab | Enable, link to disambiguate + Load links (variants from the disambiguation page), variants box, skip when none made, ± context characters | missing | C |
 | Bots tab | Auto save, max edits, delay between edits, suppress "using AWB"; nudge timer (resave if stuck, total nudges, reset, skip if first nudge fails); auto shutdown (shutdown/standby/restart/hibernate) | missing | C |
-| Find & Replace dialog | row indicator column, Search + Go; links to the regex help | partial (no Search) | B |
-| Replace Special | New / Rule menus, up/down arrows to reorder, New rule / New subrule / Delete, Find/If tabs | missing UI | B |
+| Find & Replace dialog | row indicator column, Search + Go; links to the regex help | done (Search) | |
+| Replace Special | New / Rule menus, up/down arrows to reorder, New rule / New subrule / Delete, Find/If tabs | done | undo/redo, cut/copy/paste, disabled rules in red |
 | Skip if no… | Check all/none + 10 boxes (title boldened, external link bulleted, bad links fixed, unicodification, auto tag changes, header error fixed, DEFAULTSORT added, user talk templates subst'd, citation dates fixed, human category changes) | missing UI | B |
 | List filter | Namespaces (content + talk columns, all content / all talk), title remove/keep containing (+regex), sort, remove duplicates, set operations (difference, intersection) with another list (open file, paste, clear) | done | |
-| Regex tester | Find, Replace, text, result; MultiLine/SingleLine/IgnoreCase/ExplicitCapture | missing | E |
+| Regex tester | Find, Replace, text, result; MultiLine/SingleLine/IgnoreCase/ExplicitCapture | done | |
 | External processing | Enabled, skip if no change, program, arguments, I/O file, pass text as file or as parameter | missing | E |
 | Module | Enabled + "No module loaded" state, language, Make module, built-at time, fixed width font, template text | missing | E (Python) |
 | List comparer | Two list makers, Compare, unique 1 / common / unique 2 with counts, Save list / Use list each, Clear all | missing | E |
@@ -288,7 +288,7 @@ running app with screenshots. One commit per step.
 | A3 ✔ | **Options menu** (all toggles wired to `ProcessOptions`/engine flags), pre-parse mode, apply changes automatically, highlight Find matches/errors, auto focus end; **View menu** (toolbar, control panel F11, enlarge edit box F10, edit box toolbar, false positives); Tools ▸ reset counts, invalidate cache; Help F1; Start tab Delink selection, false positive button, Ctrl+G/Esc | `Main.cs`, `Article.cs` alerts | General fixes: the Options menu switches (restrict DEFAULTSORT, orphan tagging, MOS fixes, sort interwikis, reference tags) |
 | A4 ✔ | **Skip tab** extras (spam filter blocked, only cosmetic changes, no alerts, exists/doesn't/don't care radio); **Logs** context menu (add to list, cut/copy, remove, select, open page/diff/history, filter show only/exclude, clear, reset) | `LogControl.cs`, `Main.cs` skip checks | User manual: Skip tab, Logs |
 | B1 ✔ | **List filter** dialog (namespaces, title, set operations, sort, duplicates) | `ListFilterForm.cs` | Database Scanner: results Filter uses the same dialog |
-| B2 | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |
+| B2 ✔ | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |
 | B3 | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
 | C1 | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
 | C2 | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
@@ -310,13 +310,13 @@ API key), splash screen (start screen instead).
 | Item | Status | Phase / notes |
 |---|---|---|
 | Normal settings: ignore links/images/nowiki/math/comments (Hide), ignore templates/refs/link targets/headings/quotes (HideMore), add replacements to summary | done | |
-| Normal settings: **Search** box + Go (searches Find and Replace with) | missing | B |
+| Normal settings: **Search** box + Go (searches Find and Replace with) | done | |
 | Normal settings: Clear, OK, Cancel; rows: find, replace with, case sensitive, regex, multiline, singleline, minor, after fixes, enabled, comment | done | |
 | `$1`, `$2`… in replacements; `\n` for newlines (plain and regex) | done | engine (`rules.findreplace`) |
 | Keywords `%%key%%`, `%%title%%`, `%%fullpagename%%`, `%%pagename%%`, `%%subpagename%%`, `%%basepagename%%`, `%%namespace%%`, `%%server%%`, `%%servername%%`, `%%scriptpath%%` | done | `tools.apply_key_words`, values checked against the manual's table |
 | Minor rules not applied on Re-parse (F5) | n/a | AWB's source applies them; only "skip if no / only minor replacement" is off on Re-parse, as here |
-| Advanced settings (Replace Special): rule tree with New ▸ Rule / In template call / Template parameter and subrules; Name, Enabled (disabled in red), Type (entire text / inside template calls, nested), Find/Replace, regex, case, multiline, singleline, Apply # times, If: contains / not contains (+ options), Templates list (in template call), Rule menu (undo, redo, cut, copy, paste, delete, refresh colours), Test… | missing UI (engine `rules.replacespecial` done) | B |
-| Template substitution: templates to substitute (one per line; braces and namespace optional), ignore links…, expand recursively, include comment with template name, Clear, Reset, OK, Cancel | missing UI (engine `rules.substtemplates` done; expansion through `api` `expandtemplates`) | B |
+| Advanced settings (Replace Special): rule tree with New ▸ Rule / In template call / Template parameter and subrules; Name, Enabled (disabled in red), Type (entire text / inside template calls, nested), Find/Replace, regex, case, multiline, singleline, Apply # times, If: contains / not contains (+ options), Templates list (in template call), Rule menu (undo, redo, cut, copy, paste, delete, refresh colours), Test… | done | `ui.replace_special_dialog` |
+| Template substitution: templates to substitute (one per line; braces and namespace optional), ignore links…, expand recursively, include comment with template name, Clear, Reset, OK, Cancel | done | |
 | Order: normal F&R → advanced → template substitution → general fixes and typos → F&R after fixes | done | `core.process.process_page` |
 | Saved with the settings file | missing | D |
 
@@ -327,7 +327,7 @@ API key), splash screen (start screen instead).
 | Options IgnoreCase, SingleLine, MultiLine, ExplicitCapture (check boxes and inline `(?imsnx-imsnx)` / `(?i:…)`) | done | |
 | Timeout per rule | done | rule 2 |
 | User-made shortcut editing macros (advanced rules applied by Re-parse) | done | Re-parse runs every rule |
-| Regex tester | missing | E |
+| Regex tester | done | Tools ▸ Regex tester (Ctrl+Shift+T) and the Test… buttons |
 
 ### General fixes (Wikipedia:AutoWikiBrowser/General_fixes)
 All 56 fixes the chapter names are ported with AWB's tests (`core/parsers/*`, `core/article.py`); the four the

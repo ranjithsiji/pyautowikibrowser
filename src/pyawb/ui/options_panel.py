@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -41,11 +43,15 @@ from pyawb.core.process import (
     clean_category_input,
     clean_file_input,
 )
-from pyawb.core.site import SiteConfig, current_site
+from pyawb.core.site import SiteConfig, current_site, use_site
 from pyawb.editloop import LoopOptions
 from pyawb.rules.findreplace import find_and_replace_from_rows
+from pyawb.rules.replacespecial import IRule, ReplaceSpecial
 from pyawb.rules.skip import create_comparer
+from pyawb.rules.substtemplates import SubstTemplates
 from pyawb.ui.find_replace_dialog import FindReplaceDialog, FindReplaceSettings
+from pyawb.ui.replace_special_dialog import ReplaceSpecialDialog
+from pyawb.ui.subst_templates_dialog import SubstSettings, SubstTemplatesDialog
 
 # AWB's combo box items, in its order (the enum values)
 CATEGORY_ACTIONS = (
@@ -112,6 +118,8 @@ class OptionsPanel(QTabWidget):
         super().__init__(parent)
         self.setObjectName("optionsPanel")
         self.far_settings = FindReplaceSettings()
+        self.replace_special_rules: list[IRule] = []
+        self.subst_settings = SubstSettings()
         self.site: SiteConfig = current_site()
         self._make_options_tab()
         self._make_more_tab()
@@ -144,17 +152,25 @@ class OptionsPanel(QTabWidget):
 
         far = QGroupBox(self.tr("Find and replace"), options)
         self.find_replace = QCheckBox(self.tr("Find and replace"), far)
-        self.far_rules = QPushButton(self.tr("Rules…"), far)
+        # AWB's three buttons: the table, Replace Special and template substitution
+        self.far_rules = QPushButton(self.tr("Normal settings"), far)
         self.far_rules.clicked.connect(self.edit_find_replace)
+        self.far_advanced = QPushButton(self.tr("Advanced settings"), far)
+        self.far_advanced.clicked.connect(self.edit_replace_special)
+        self.far_subst = QPushButton(self.tr("Template substitution"), far)
+        self.far_subst.clicked.connect(self.edit_subst_templates)
         self.far_count = QLabel(far)
+        self.far_count.setWordWrap(True)
         self.skip_no_far = QCheckBox(self.tr("Skip if no replacement"), far)
         self.skip_minor_far = QCheckBox(self.tr("Skip if only minor replacements"), far)
         fl = QGridLayout(far)
         fl.addWidget(self.find_replace, 0, 0)
         fl.addWidget(self.far_rules, 0, 1)
-        fl.addWidget(self.far_count, 1, 0, 1, 2)
-        fl.addWidget(self.skip_no_far, 2, 0, 1, 2)
-        fl.addWidget(self.skip_minor_far, 3, 0, 1, 2)
+        fl.addWidget(self.far_advanced, 1, 1)
+        fl.addWidget(self.far_subst, 2, 1)
+        fl.addWidget(self.far_count, 1, 0, 2, 1)
+        fl.addWidget(self.skip_no_far, 3, 0, 1, 2)
+        fl.addWidget(self.skip_minor_far, 4, 0, 1, 2)
 
         typos = QGroupBox(self.tr("Typo fixing"), options)
         self.fix_typos = QCheckBox(self.tr("Fix typos (RegExTypoFix)"), typos)
@@ -326,6 +342,29 @@ class OptionsPanel(QTabWidget):
         if dialog.exec():
             self.set_find_replace(dialog.settings())
 
+    def edit_replace_special(self) -> None:
+        """Advanced settings: Replace Special's rule tree."""
+        dialog = ReplaceSpecialDialog(self.replace_special_rules, self)
+        if dialog.exec():
+            self.set_replace_special(dialog.rules())
+
+    def set_replace_special(self, rules: list[IRule]) -> None:
+        self.replace_special_rules = rules
+        if rules and not self.find_replace.isChecked():
+            self.find_replace.setChecked(True)
+        self._update_far_count()
+
+    def edit_subst_templates(self) -> None:
+        dialog = SubstTemplatesDialog(self.subst_settings, self)
+        if dialog.exec():
+            self.set_subst_templates(dialog.value())
+
+    def set_subst_templates(self, settings: SubstSettings) -> None:
+        self.subst_settings = settings
+        if settings.templates and not self.find_replace.isChecked():
+            self.find_replace.setChecked(True)
+        self._update_far_count()
+
     def set_find_replace(self, settings: FindReplaceSettings) -> None:
         self.far_settings = settings
         if settings.rows and not self.find_replace.isChecked():
@@ -334,11 +373,18 @@ class OptionsPanel(QTabWidget):
 
     def _update_far_count(self) -> None:
         enabled = sum(1 for r in self.far_settings.rows if r.enabled)
-        self.far_count.setText(
+        parts = [
             self.tr("%1 rules, %2 enabled")
             .replace("%1", str(len(self.far_settings.rows)))
             .replace("%2", str(enabled))
-        )
+        ]
+        if self.replace_special_rules:
+            parts.append(self.tr("%n advanced rule(s)", "", len(self.replace_special_rules)))
+        if self.subst_settings.templates:
+            parts.append(
+                self.tr("%n template(s) to substitute", "", len(self.subst_settings.templates))
+            )
+        self.far_count.setText("\n".join(parts))
 
     def _update_more(self) -> None:
         cat = self.category_action.currentData()
@@ -368,14 +414,29 @@ class OptionsPanel(QTabWidget):
         """The options as set (raises OptionsError for an unusable skip pattern). typos: the
         loaded typo list, used when "Fix typos" is on."""
         far = None
-        if self.find_replace.isChecked() and self.far_settings.rows:
+        replace_special: ReplaceSpecial | None = None
+        subst: SubstTemplates | None = None
+        if self.find_replace.isChecked():
+            # AWB runs the advanced rules and template substitution as part of find and replace
             s = self.far_settings
-            far = find_and_replace_from_rows(
-                s.rows,
-                ignore_links=s.ignore_links,
-                ignore_more=s.ignore_more,
-                add_to_summary=s.add_to_summary,
-            )
+            if self.replace_special_rules:
+                replace_special = ReplaceSpecial(copy.deepcopy(self.replace_special_rules))
+            if self.subst_settings.templates:
+                st = self.subst_settings
+                subst = SubstTemplates(
+                    expand_recursively=st.expand_recursively,
+                    ignore_unformatted=st.ignore_unformatted,
+                    include_comments=st.include_comments,
+                )
+                with use_site(self.site):
+                    subst.template_list = st.templates
+            if s.rows or replace_special or subst:
+                far = find_and_replace_from_rows(
+                    s.rows,
+                    ignore_links=s.ignore_links,
+                    ignore_more=s.ignore_more,
+                    add_to_summary=s.add_to_summary,
+                )
         p = ProcessOptions(
             user_name=user_name,
             ignore_no_bots=self.ignore_nobots.isChecked(),
@@ -383,6 +444,8 @@ class OptionsPanel(QTabWidget):
             no_retf=no_retf,
             unicodify_whole=self.unicodify.isChecked(),
             find_and_replace=far,
+            replace_special=replace_special,
+            subst_templates=subst,
             skip_when_no_far=self.skip_no_far.isChecked(),
             skip_only_minor_far=self.skip_minor_far.isChecked(),
             categorise=self.category_action.currentData(),

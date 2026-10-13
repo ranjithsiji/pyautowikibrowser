@@ -24,7 +24,9 @@ ReplaceSpecial.timed_out.
 
 from __future__ import annotations
 
+import copy
 import enum
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from pyawb.core import rx, tools
@@ -247,3 +249,38 @@ class ReplaceSpecial:
     def apply(self, article_text: str, article_title: str) -> str:
         """core.article.TextRules."""
         return self.apply_rules(article_text, article_title)
+
+
+class RuleHistory:
+    """RuleTreeHistory: undo and redo for the rule tree, as snapshots of the top-level rules."""
+
+    def __init__(self, limit: int = 50) -> None:
+        self.limit = limit
+        self._undo: list[list[IRule]] = []
+        self._redo: list[list[IRule]] = []
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    def save(self, rules: Sequence[IRule]) -> None:
+        """Before a change: remember the tree as it is."""
+        self._undo.append(copy.deepcopy(list(rules)))
+        del self._undo[: -self.limit]
+        self._redo.clear()
+
+    def undo(self, current: Sequence[IRule]) -> list[IRule]:
+        if not self._undo:
+            return list(current)
+        self._redo.append(copy.deepcopy(list(current)))
+        return self._undo.pop()
+
+    def redo(self, current: Sequence[IRule]) -> list[IRule]:
+        if not self._redo:
+            return list(current)
+        self._undo.append(copy.deepcopy(list(current)))
+        return self._redo.pop()

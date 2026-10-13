@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMenu,
     QPushButton,
     QTableWidget,
@@ -32,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pyawb.rules.findreplace import ReplacementRow, row_error
+from pyawb.rules.findreplace import ReplacementRow, next_search_match, row_error
 from pyawb.ui.editor_dialogs import primary_button
 
 # (field, header) in AWB's column order; the bool fields are check boxes
@@ -93,6 +94,18 @@ class FindReplaceDialog(QDialog):
         for b in (add, delete, up, down, clear):
             row_buttons.addWidget(b)
         row_buttons.addStretch(1)
+        # AWB's Search + Go: the next row whose Find or Replace with contains the text
+        self.search = QLineEdit(self)
+        self.search.setPlaceholderText(self.tr("Search"))
+        self.search.setClearButtonEnabled(True)
+        self.search_go = QPushButton(self.tr("Go"), self)
+        self.search_go.setEnabled(False)
+        self.search.textChanged.connect(lambda t: self.search_go.setEnabled(bool(t)))
+        self.search.returnPressed.connect(self.search_next)
+        self.search_go.clicked.connect(self.search_next)
+        row_buttons.addWidget(QLabel(self.tr("Search:"), self))
+        row_buttons.addWidget(self.search)
+        row_buttons.addWidget(self.search_go)
 
         self.ignore_links = QCheckBox(
             self.tr("Ignore external/interwiki links, images, nowiki, math and <!-- -->"), self
@@ -126,6 +139,20 @@ class FindReplaceDialog(QDialog):
         self.set_settings(settings)
 
     # -- rows ---------------------------------------------------------------------------------
+
+    def search_next(self) -> bool:
+        """Go: select the next cell (Find or Replace with) containing the search text."""
+        cells: list[tuple[str, str]] = []
+        for r in range(self.table.rowCount()):
+            find, with_ = (self.table.item(r, c) for c in (0, 1))
+            cells.append((find.text() if find else "", with_.text() if with_ else ""))
+        hit = next_search_match(cells, self.search.text(), self.table.currentRow())
+        if hit is None:
+            return False
+        row, col = hit
+        self.table.setCurrentCell(row, col)
+        self.table.scrollTo(self.table.model().index(row, col))
+        return True
 
     def set_settings(self, settings: FindReplaceSettings) -> None:
         self.table.setRowCount(0)
