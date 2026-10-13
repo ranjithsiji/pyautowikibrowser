@@ -1,9 +1,11 @@
-# AWB-X: cross-platform AutoWikiBrowser
+# PyAutoWikiBrowser (PyAWB): cross-platform AutoWikiBrowser
 
 A rewrite of AutoWikiBrowser (AWB), the semi-automated MediaWiki editor, for Linux, macOS and
 Windows, usable on all ~360 Wikipedia languages including RTL (Arabic, Hebrew, Persian), Indic
 (Malayalam, Hindi) and CJK scripts. The original is .NET Framework 4.8.1 + Windows Forms.
-Named AWB-X (cross-platform) since 2026-10-13; it was AWB-L before, so old notes may say AWB-L / `awb_l`.
+Named PyAutoWikiBrowser (PyAWB, package `pyawb`) since 2026-10-13, reviving the name of a 2009 Python AWB
+(https://en.wikipedia.org/wiki/Wikipedia:PyAutoWikiBrowser, also the User-Agent contact). Earlier names: AWB-L
+(`awb_l`), then briefly AWB-X (`awb_x`).
 
 ## Stack decision: Python + PySide6 + `regex` (decided 2026-10-12, do not change without discussion)
 
@@ -48,6 +50,7 @@ Why Python wins:
 | `.../tags/`, `.../branches/` | Old releases | Ignore |
 | `/home/alphad13/Projects/mediawiki-extensions-WikiEditor` | MediaWiki WikiEditor (JS, GPL-2.0-or-later, 2026-10) | Editor toolbar: layout and `encapsulate` actions (`modules/jquery.wikiEditor.toolbar.config.js`), dialogs, translations in 273 languages (`i18n/`) |
 | `/home/alphad13/Projects/codemirror-mediawiki` | `@bhsd/codemirror-mediawiki` 4.7.1 (TS, GPL-2.0-or-later, 2026-10) | Highlighter: port the line-by-line stream tokenizer `src/token.ts` to a `QSyntaxHighlighter` (per-block state); its tests in `test/src/`. `mw/textSelection.ts` for `encapsulateSelection`; `matchBrackets`/`matchTag`/`fold`/`bidi` for later editor features |
+| `/home/alphad13/Projects/wikidiff2` | wikidiff2 (Tim Starling, C++, 2006; SWIG Python wrapper used by a 2009 Python AWB) | Native diff (step 5): MediaWiki's word-level diff with character-level diff for Han, Japanese and Thai; `DiffEngine.h` algorithm; `test/test-a*`, `test-b*` expected outputs |
 | `/home/alphad13/Projects/huggle3-qt-lx` | Huggle 3 (Qt C++, GPL-3.0) | Qt desktop patterns, packaging for 3 OSes |
 | wAwB gadget (`en.wikipedia.org/wiki/User:Ponor/wAwB`, JS, GPL) | In-browser AWB-like tool | Server-side diff/preview, protected regions, timed rule runs |
 
@@ -61,16 +64,16 @@ Key AWB sources: `WikiFunctions/Parse/*` (general fixes, ~15k lines), `WikiFunct
 | Language | Python 3.12+, fully type-annotated, `pyright` strict on `core/` |
 | Env and deps | `uv` (`pyproject.toml`, `uv.lock`) |
 | UI | PySide6 (Qt 6 Widgets, LGPL) for lists, toolbars, menus, options, dialogs. Not QML |
-| Look and feel | Fusion style forced on every OS + one QSS stylesheet with light/dark colour tokens (`awb_x.ui.theme`). Rules stay direction-neutral for RTL. Fonts stay OS-provided for script coverage |
+| Look and feel | Fusion style forced on every OS + one QSS stylesheet with light/dark colour tokens (`pyawb.ui.theme`). Rules stay direction-neutral for RTL. Fonts stay OS-provided for script coverage |
 | Wikitext editor | `QPlainTextEdit` + `QSyntaxHighlighter` fed by a Python wikitext tokenizer ported from codemirror-mediawiki's `src/token.ts` (pure, tested, outside `ui/`). Avoid QScintilla (weak bidi) and browser editors (Chromium complex-script bugs). Editor actions are Python functions over (text, selection) with unit tests; Qt only passes selection in and out |
 | Editor toolbar | Built from data converted once from WikiEditor's toolbar config (sections, groups, tools, `encapsulate` actions, special characters from MediaWiki core); labels from WikiEditor's `i18n/` (273 languages); `encapsulate` semantics ported from core's `jquery.textSelection` |
 | Visual editing | "Visual" button opens the wiki's own VisualEditor (`?veaction=edit`) in the default browser. No embedded VisualEditor, no tiptap/ProseMirror (cannot round-trip wikitext) |
-| Regex | `regex` module only, through `awb_x.core.rx`. Never import `re` for rule matching |
-| Wiki API | pywikibot behind a thin `awb_x.api` wrapper, configured in code (no `user-config.py`) |
+| Regex | `regex` module only, through `pyawb.core.rx`. Never import `re` for rule matching |
+| Wiki API | pywikibot behind a thin `pyawb.api` wrapper, configured in code (no `user-config.py`) |
 | Diff and preview | Diff in native Qt widgets (word-level, from `difflib` or `action=compare`). Parsoid/`action=parse` preview opens in the default browser; optional embedded `QWebEngineView` preview as a setting |
 | Custom modules | Python functions `(text, title, vars) -> text`, run in a worker with a timeout |
-| Plugins | Python entry points (`awb_x.plugins` group) with a typed hook API |
-| Settings | User config `config.toml` in the OS config dir (`awb_x.paths`, `settings/appconfig.py`): login profiles (wiki, login name), User-Agent contact. Project/rule settings as TOML/JSON files later; importer for old AWB settings XML |
+| Plugins | Python entry points (`pyawb.plugins` group) with a typed hook API |
+| Settings | User config `config.toml` in the OS config dir (`pyawb.paths`, `settings/appconfig.py`): login profiles (wiki, login name), User-Agent contact. Project/rule settings as TOML/JSON files later; importer for old AWB settings XML |
 | Credentials | `keyring` (OS keychain, `api/credentials.py`); never written to `config.toml` (the parser rejects a `password` key) |
 | Tests | `pytest`, `pytest-qt`; ported AWB tests are the parity suite |
 | Lint/format | `ruff` |
@@ -81,7 +84,7 @@ Key AWB sources: `WikiFunctions/Parse/*` (general fixes, ~15k lines), `WikiFunct
 
 ```
 pyproject.toml
-src/awb_x/
+src/pyawb/
   core/
     rx.py            # compile/cache/run regexes; timeouts; .NET->regex translation
     dotnet_regex.py  # translator for user rules and typo lists
@@ -98,7 +101,7 @@ src/awb_x/
   rules/             # find & replace, typo lists, skip conditions
   scripting/         # custom Python modules, sandbox-ish runner with timeout
   settings/          # config.toml profiles; later AWB settings import
-  paths.py           # per-OS config and data directories (AWB_X_HOME overrides)
+  paths.py           # per-OS config and data directories (PYAWB_HOME overrides)
   plugins/           # plugin API and loader
   ui/                # PySide6 windows, views, models (no business logic)
 tests/
@@ -130,7 +133,7 @@ docs/wiki/           # pages to publish on Wikipedia (the User-Agent contact pag
 6. **Keep the CheckPage gate.** Read `Project:AutoWikiBrowser/CheckPageJSON`; refuse to save for unapproved
    users; keep version checks. Do not copy wAwB's "allow if >500 edits when no CheckPage" fallback without discussion.
 7. **Be a polite API client.** Descriptive `User-Agent`, `maxlag`, `assert=user`, `baserevid` on save,
-   respect throttles. All calls go through `awb_x.api`.
+   respect throttles. All calls go through `pyawb.api`.
 8. **Protected regions.** Hide comments/nowiki/math/pre/etc. before rules run and restore after, with
    `core.parsers.hidetext.HideText`. Placeholders are AWB's exact `⌊⌊⌊⌊n⌋⌋⌋⌋` / `⌊⌊⌊⌊Mn⌋⌋⌋⌋` markers, because
    ported WikiRegexes patterns match them. Verify placeholders never survive into saved text.
@@ -167,7 +170,7 @@ uv run pytest                       # all tests
 uv run pytest tests/core -k parsers # one area
 uv run ruff check . && uv run ruff format .
 uv run pyright
-uv run awb-x                        # launch the app
+uv run pyawb                        # launch the app
 ```
 
 Run tests and pyright before calling any task done.
@@ -192,7 +195,7 @@ Run tests and pyright before calling any task done.
    `lists/pagegenerators.py` exposes pywikibot's generators. Wikidata: `api/wikidata.py` fetches (batched
    `wbgetentities`), `core/wikidata.py` holds items and the interwiki-vs-sitelinks check/removal.
    `api/connect.py` opens a session from a `config.toml` profile. The User-Agent contact is the tool page
-   (`docs/wiki/AWB-X.wikitext`, to be published at Wikipedia:AWB-X). Open: whether AWB-X requires its own entry in the global VersionJSON
+   (`docs/wiki/PyAutoWikiBrowser.wikitext`, to be published at Wikipedia:PyAutoWikiBrowser). Open: whether PyAutoWikiBrowser requires its own entry in the global VersionJSON
    (`WikiSession(require_enabled_version=...)`, off for now) and may use the "AWB" change tag; OAuth; the edit
    scheduler (delay between saves) belongs with the save loop in step 5; Wikidata dates/description not yet
    used by the category and DEFAULTSORT fixes.

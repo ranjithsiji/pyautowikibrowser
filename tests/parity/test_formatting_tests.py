@@ -10,12 +10,12 @@ with a comment explaining why.
 
 import pytest
 
-from awb_x.core import genfixes, namespace, tools
-from awb_x.core import wikiregexes as W
-from awb_x.core.dotnet_regex import DotNetOptions as O
-from awb_x.core.parsers.parsers import DateLocale
-from awb_x.core.rx import DotNetRegex
-from awb_x.core.site import Namespace, SiteConfig, current_site
+from pyawb.core import genfixes, namespace, tools
+from pyawb.core import wikiregexes as W
+from pyawb.core.dotnet_regex import DotNetOptions as O
+from pyawb.core.parsers.parsers import DateLocale
+from pyawb.core.rx import DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig, current_site
 from tests.parity import regex_assert
 from tests.parity.genfixes_base import genFixes
 from tests.parity.helpers import EN, cs_len, set_lang, set_site
@@ -853,7 +853,7 @@ def test_fix_small_tags_image_descriptions() -> None:
 
 def test_load_template_redirects() -> None:
     # Hand-ported. AWB returns Dictionary<Regex, string> and sets WikiRegexes.AllTemplateRedirects;
-    # AWB-X returns a TemplateRedirectRules holding both.
+    # PyAutoWikiBrowser returns a TemplateRedirectRules holding both.
     template_redirects = []
     assert list(genfixes.load_template_redirects("").rules) == template_redirects, (
         "returns empty dictionary when no rules present"

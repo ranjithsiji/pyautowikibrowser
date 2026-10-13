@@ -1,5 +1,5 @@
 """Port of the ListMakerTests, ListComparerTests and ListBoxArticleTests fixtures in AWB
-UnitTests/MiscellaneousTests.cs: the page list model (awb_x.lists.listmaker).
+UnitTests/MiscellaneousTests.cs: the page list model (pyawb.lists.listmaker).
 
 ListMakerTests converted by tools/porting/nunit2py.py, then edited by hand; the other two are ported
 by hand, with AWB's ListBox controls replaced by plain lists: compare_lists returns the three lists
@@ -7,9 +7,9 @@ AWB filled in, and ArticleList holds the selection ListBoxArticle had. The Mono-
 are left out.
 """
 
-from awb_x.core.article import Article
-from awb_x.lists.listmaker import ArticleList as ListMaker
-from awb_x.lists.listmaker import compare_lists
+from pyawb.core.article import Article
+from pyawb.lists.listmaker import ArticleList as ListMaker
+from pyawb.lists.listmaker import compare_lists
 
 big = 10000
 big = 500

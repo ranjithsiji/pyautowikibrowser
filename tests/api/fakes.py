@@ -3,8 +3,8 @@
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from awb_x.api.errors import check_errors
-from awb_x.api.transport import Param, normalise_params
+from pyawb.api.errors import check_errors
+from pyawb.api.transport import Param, normalise_params
 
 type Handler = Callable[[dict[str, str]], Mapping[str, Any]]
 

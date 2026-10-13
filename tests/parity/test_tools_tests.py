@@ -1,4 +1,4 @@
-"""Port of AWB UnitTests/ToolsTests.cs: the parity suite for awb_x.core.tools.
+"""Port of AWB UnitTests/ToolsTests.cs: the parity suite for pyawb.core.tools.
 
 Converted mechanically from the C# by tools/porting/nunit2py.py (CRLF line endings in multi-line
 strings preserved), then edited by hand. Expectations that differ from AWB on purpose are marked
@@ -10,13 +10,13 @@ with a comment explaining why.
 
 import pytest
 
-from awb_x.core import namespace, tools
-from awb_x.core import wikiregexes as W
-from awb_x.core.dotnet_regex import DotNetOptions as O
-from awb_x.core.parsers.hidetext import HideText
-from awb_x.core.parsers.parsers import DateLocale
-from awb_x.core.rx import DotNetRegex
-from awb_x.core.site import Namespace, SiteConfig
+from pyawb.core import namespace, tools
+from pyawb.core import wikiregexes as W
+from pyawb.core.dotnet_regex import DotNetOptions as O
+from pyawb.core.parsers.hidetext import HideText
+from pyawb.core.parsers.parsers import DateLocale
+from pyawb.core.rx import DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig
 from tests.parity import regex_assert
 from tests.parity.helpers import EN, set_lang, set_site
 from tests.parity.regex_assert import check_match, check_matches
@@ -231,7 +231,7 @@ def test_word_count() -> None:
 
 
 def test_line_endings() -> None:
-    # AWB skips the conversions under Mono; AWB-X always uses "\r\n" internally.
+    # AWB skips the conversions under Mono; PyAutoWikiBrowser always uses "\r\n" internally.
     assert tools.convert_to_local_line_endings("") == ""
     assert tools.convert_to_local_line_endings("foo bar") == "foo bar"
     assert tools.convert_to_local_line_endings("\nfoo\nbar\n") == "\r\nfoo\r\nbar\r\n"
@@ -253,7 +253,7 @@ def test_replace_part_of_string() -> None:
 
 
 def test_replace_once() -> None:
-    # AWB has StringBuilder and ref-string overloads; AWB-X returns (text, replaced).
+    # AWB has StringBuilder and ref-string overloads; PyAutoWikiBrowser returns (text, replaced).
     def replace_once(text: str, old: str, new: str) -> str:
         return tools.replace_once(text, old, new)[0]
 
@@ -573,7 +573,9 @@ def test_is_wikimedia_project() -> None:
     assert not tools.is_wikimedia_project("wikia")
 
 
-@pytest.mark.skip(reason="AWB's ProjectEnum ordering; AWB-X identifies projects by name")
+@pytest.mark.skip(
+    reason="AWB's ProjectEnum ordering; PyAutoWikiBrowser identifies projects by name"
+)
 def test_orde_of_wikimedia_projects() -> None:
     pass
 
@@ -2284,13 +2286,13 @@ def test_nested_template_regex_single_word() -> None:
     assert not foo.is_match(r"{{Template foo}}")
     foo = tools.nested_template_regex("foo")
     assert foo.match(r"{{  foo}}").group(1) == r"{{  "
-    # AWB returns null for an empty name; AWB-X raises.
+    # AWB returns null for an empty name; PyAutoWikiBrowser raises.
     with pytest.raises(ValueError):
         tools.nested_template_regex("")
     # A wiki without a Template namespace entry falls back to "[Tt]emplate:".
     from dataclasses import replace
 
-    from awb_x.core.site import current_site
+    from pyawb.core.site import current_site
 
     # AWB removes Template from Variables.NamespacesCaseInsensitive only; build the regex
     # directly for a site without it, since SiteRegexes needs the namespace.
@@ -2328,7 +2330,7 @@ def test_nested_template_regex_two_words() -> None:
 
 def test_nested_template_regex_limits() -> None:
     S = W.for_site(EN)
-    # AWB returns null for an empty name; AWB-X raises, so callers never get an unexpected None.
+    # AWB returns null for an empty name; PyAutoWikiBrowser raises, so callers never get an unexpected None.
     with pytest.raises(ValueError):
         tools.nested_template_regex(r"")
 
@@ -2336,7 +2338,7 @@ def test_nested_template_regex_limits() -> None:
 def test_nested_template_regex_list_single() -> None:
     S = W.for_site(EN)
     ListOfTemplates = []
-    # AWB returns null for an empty list; AWB-X raises (see test_nested_template_regex_limits).
+    # AWB returns null for an empty list; PyAutoWikiBrowser raises (see test_nested_template_regex_limits).
     with pytest.raises(ValueError):
         tools.nested_template_regex(ListOfTemplates)
     ListOfTemplates.append(r"Foo")
@@ -2589,7 +2591,7 @@ def test_get_template_name() -> None:
     # AWB removes Template from NamespacesCaseInsensitive; check the fallback regex directly.
     from dataclasses import replace
 
-    from awb_x.core.site import current_site
+    from pyawb.core.site import current_site
 
     namespaces = {k: v for k, v in current_site().namespaces.items() if k != Namespace.TEMPLATE}
     no_template_ns = replace(current_site(), namespaces=namespaces)
@@ -2637,7 +2639,7 @@ def test_is_ip() -> None:
     assert not (tools.is_ip(r"www.google.com"))
 
 
-@pytest.mark.skip(reason=".NET ServicePointManager settings; HTTP is configured in awb_x.api")
+@pytest.mark.skip(reason=".NET ServicePointManager settings; HTTP is configured in pyawb.api")
 def test_service_point_config() -> None:
     pass
 
@@ -2651,7 +2653,7 @@ def test_build_post_data_string() -> None:
     assert tools.build_post_data_string(nvc) == "param1=value1&param2=value2&param3=A+B+C"
 
 
-@pytest.mark.skip(reason="browser launching is UI code (awb_x.ui), not part of core")
+@pytest.mark.skip(reason="browser launching is UI code (pyawb.ui), not part of core")
 def test_open_in_b_rowser() -> None:
     pass
 

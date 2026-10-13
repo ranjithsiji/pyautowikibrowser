@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from awb_x import paths
-from awb_x.settings import appconfig as C
+from pyawb import paths
+from pyawb.settings import appconfig as C
 
 EXAMPLE = """
 user_agent_contact = "https://ml.wikipedia.org/wiki/User:Example"
@@ -13,12 +13,12 @@ default_profile = "മലയാളം"
 
 [[profiles]]
 name = "English"
-username = "Example@AWB-X"
+username = "Example@PyAWB"
 
 [[profiles]]
 name = "മലയാളം"
 lang = "ml"
-username = "Example@AWB-X"
+username = "Example@PyAWB"
 remember_password = true
 notes = "typo \\"fixing\\"\\nsecond line"
 future_option = 1
@@ -34,7 +34,7 @@ def test_parse_example() -> None:
     assert ml.wiki_url == "https://ml.wikipedia.org/w/"
     assert ml.user_name == "Example"
     assert ml.notes == 'typo "fixing"\nsecond line'
-    assert cfg.profile("English") == C.Profile("English", username="Example@AWB-X")
+    assert cfg.profile("English") == C.Profile("English", username="Example@PyAWB")
     assert cfg.profile("Missing") is None
 
 
@@ -86,7 +86,7 @@ def test_errors(text: str, message: str) -> None:
         C.parse(text)
 
 
-def test_config_path_honours_awb_x_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AWB_X_HOME", str(tmp_path))
+def test_config_path_honours_pyawb_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYAWB_HOME", str(tmp_path))
     assert C.config_path() == tmp_path / "config.toml"
     assert paths.data_dir() == tmp_path

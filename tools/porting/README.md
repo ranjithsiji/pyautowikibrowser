@@ -18,7 +18,7 @@ uv run python -c '<dump names json>' > names.json   # see nunit2py.py docstring
 python3 -I tools/porting/nunit2py.py <AWB>/UnitTests/RegexTests.cs tools/porting names.json > tests.py
 ```
 
-`nunit2py.py` maps AWB's C# idioms onto AWB-X's conventions: `out`/`ref` arguments become tuple
+`nunit2py.py` maps AWB's C# idioms onto PyAutoWikiBrowser's conventions: `out`/`ref` arguments become tuple
 returns (`with_outs`, `with_refs`), overloads with `out bool noChange` become `foo_no_change()`
 (`NO_CHANGE_OVERLOADS`), and changes to AWB's global `Variables`/`WikiRegexes` state become
 `set_site`/`set_lang`/`set_project` calls. A test it cannot convert is emitted as a skipped stub with

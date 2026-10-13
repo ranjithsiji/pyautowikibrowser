@@ -2,7 +2,7 @@ import urllib.request
 
 import pytest
 
-from awb_x.rules import typos
+from pyawb.rules import typos
 
 SAMPLE = (
     '<Typo word="accommodate" find="\\b(a)c(?:c?omm?|om)odat(e[ds]?|ing|ions?)\\b"'
@@ -28,7 +28,7 @@ def test_duplicates_rejected() -> None:
 def test_all_enwiki_rules_compile() -> None:
     req = urllib.request.Request(
         typos.ENWIKI_TYPOS_URL,
-        headers={"User-Agent": "AWB-X test suite (https://github.com/; awb-x tests)"},
+        headers={"User-Agent": "PyAutoWikiBrowser test suite (https://github.com/; pyawb tests)"},
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
         text = resp.read().decode("utf-8")

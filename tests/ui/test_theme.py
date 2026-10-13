@@ -2,7 +2,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
-from awb_x.ui import theme
+from pyawb.ui import theme
 
 
 def test_light_and_dark_define_the_same_tokens() -> None:

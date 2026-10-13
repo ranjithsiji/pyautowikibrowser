@@ -1,4 +1,4 @@
-"""Port of the SubstTemplates fixture in AWB UnitTests/MiscellaneousTests.cs: template substitution (awb_x.rules.substtemplates).
+"""Port of the SubstTemplates fixture in AWB UnitTests/MiscellaneousTests.cs: template substitution (pyawb.rules.substtemplates).
 
 Converted mechanically from the C# by tools/porting/nunit2py.py (CRLF line endings in multi-line
 strings preserved), then edited by hand. Expectations that differ from AWB on purpose are marked
@@ -10,13 +10,13 @@ with a comment explaining why.
 
 import pytest
 
-from awb_x.core import genfixes, namespace, rx, tools
-from awb_x.core import wikiregexes as W
-from awb_x.core.dotnet_regex import DotNetOptions as O
-from awb_x.core.parsers.hidetext import HideText
-from awb_x.core.parsers.parsers import DateLocale
-from awb_x.core.rx import DotNetRegex
-from awb_x.core.site import Namespace, SiteConfig, current_site
+from pyawb.core import genfixes, namespace, rx, tools
+from pyawb.core import wikiregexes as W
+from pyawb.core.dotnet_regex import DotNetOptions as O
+from pyawb.core.parsers.hidetext import HideText
+from pyawb.core.parsers.parsers import DateLocale
+from pyawb.core.rx import DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig, current_site
 from tests.parity import regex_assert
 from tests.parity.genfixes_base import genFixes
 from tests.parity.helpers import (
@@ -31,7 +31,7 @@ from tests.parity.helpers import (
 from tests.parity.regex_assert import check_match, check_matches
 
 parser = genfixes.Parsers()  # AWB's RequiresParser
-from awb_x.rules.substtemplates import SubstTemplates  # noqa: E402
+from pyawb.rules.substtemplates import SubstTemplates  # noqa: E402
 
 
 def test_subst_templates_no_expand() -> None:

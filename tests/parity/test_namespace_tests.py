@@ -1,4 +1,4 @@
-"""Port of AWB UnitTests/MiscellaneousTests.cs, class NamespaceTests: the parity suite for awb_x.core.namespace.
+"""Port of AWB UnitTests/MiscellaneousTests.cs, class NamespaceTests: the parity suite for pyawb.core.namespace.
 
 Converted mechanically from the C# by tools/porting/nunit2py.py (CRLF line endings in multi-line
 strings preserved), then edited by hand. Expectations that differ from AWB on purpose are marked
@@ -10,12 +10,12 @@ with a comment explaining why.
 
 import pytest
 
-from awb_x.core import namespace, tools
-from awb_x.core import wikiregexes as W
-from awb_x.core.dotnet_regex import DotNetOptions as O
-from awb_x.core.parsers.hidetext import HideText
-from awb_x.core.rx import DotNetRegex
-from awb_x.core.site import Namespace, SiteConfig
+from pyawb.core import namespace, tools
+from pyawb.core import wikiregexes as W
+from pyawb.core.dotnet_regex import DotNetOptions as O
+from pyawb.core.parsers.hidetext import HideText
+from pyawb.core.rx import DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig
 from tests.parity import regex_assert
 from tests.parity.helpers import EN, set_lang, set_site
 from tests.parity.regex_assert import check_match, check_matches
@@ -62,7 +62,7 @@ def test_determine_deviations() -> None:
 
 
 def test_other_languages() -> None:
-    from awb_x.core.site import current_site
+    from pyawb.core.site import current_site
 
     set_lang("fr")
     set_site(namespaces={**current_site().namespaces, 1: "Discussion:"})
@@ -159,7 +159,7 @@ def test_normalize_namespace() -> None:
 
 
 def test_verify() -> None:
-    from awb_x.core.site import CANONICAL_NAMESPACES
+    from pyawb.core.site import CANONICAL_NAMESPACES
 
     assert namespace.verify_namespaces(CANONICAL_NAMESPACES)
     ns = dict(CANONICAL_NAMESPACES)

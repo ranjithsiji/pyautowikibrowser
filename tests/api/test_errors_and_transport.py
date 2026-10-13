@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from awb_x.api import errors as E
-from awb_x.api.transport import USER_AGENT_FORMAT, normalise_params
+from pyawb.api import errors as E
+from pyawb.api.transport import USER_AGENT_FORMAT, normalise_params
 
 
 @pytest.mark.parametrize(
@@ -70,14 +70,14 @@ def test_normalise_params() -> None:
 
 
 def test_user_agent_is_descriptive() -> None:
-    assert USER_AGENT_FORMAT.startswith("AWB-X/")
+    assert USER_AGENT_FORMAT.startswith("PyAutoWikiBrowser/")
     assert "{script_comments}" in USER_AGENT_FORMAT
 
 
 def test_load_pywikibot_without_user_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import awb_x.api.transport as transport
+    import pyawb.api.transport as transport
 
     monkeypatch.setattr(transport, "_pywikibot", None)
     monkeypatch.setenv("PYWIKIBOT_DIR", "")

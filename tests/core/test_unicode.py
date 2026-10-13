@@ -5,7 +5,7 @@ Python's Unicode semantics are a feature (CLAUDE.md rule 3).
 
 import pytest
 
-from awb_x.core import rx
+from pyawb.core import rx
 
 WORDS = [
     pytest.param("الْعَرَبِيَّة", id="arabic-harakat"),

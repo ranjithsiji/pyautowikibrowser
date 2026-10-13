@@ -1,4 +1,4 @@
-"""Port of AWB UnitTests/RegexTests.cs: the parity suite for awb_x.core.wikiregexes.
+"""Port of AWB UnitTests/RegexTests.cs: the parity suite for pyawb.core.wikiregexes.
 
 Converted mechanically from the C# by tools/porting/nunit2py.py (CRLF line endings in multi-line
 strings preserved), then edited by hand. Expectations that differ from AWB on purpose are marked
@@ -10,12 +10,12 @@ with a comment explaining why.
 
 import pytest
 
-from awb_x.core import namespace, tools
-from awb_x.core import wikiregexes as W
-from awb_x.core.dotnet_regex import DotNetOptions as O
-from awb_x.core.parsers.parsers import DateLocale
-from awb_x.core.rx import DotNetRegex
-from awb_x.core.site import Namespace, SiteConfig
+from pyawb.core import namespace, tools
+from pyawb.core import wikiregexes as W
+from pyawb.core.dotnet_regex import DotNetOptions as O
+from pyawb.core.parsers.parsers import DateLocale
+from pyawb.core.rx import DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig
 from tests.parity import regex_assert
 from tests.parity.helpers import EN, set_lang, set_site
 from tests.parity.regex_assert import check_match, check_matches

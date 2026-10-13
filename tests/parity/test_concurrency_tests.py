@@ -4,7 +4,7 @@ hide text independently.
 Converted mechanically from the C# by tools/porting/nunit2py.py.
 """
 
-from awb_x.core import genfixes
+from pyawb.core import genfixes
 
 
 def test_parser() -> None:

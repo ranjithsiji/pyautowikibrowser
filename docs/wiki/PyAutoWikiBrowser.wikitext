@@ -1,0 +1,51 @@
+'''PyAutoWikiBrowser''' ('''PyAWB''') is an editing assist tool for [[MediaWiki]] similar to [[Wikipedia:AutoWikiBrowser|AutoWikiBrowser]] (AWB). It is written in [[Python (programming language)|Python]] and runs on '''Linux, macOS and Windows'''. It is meant for every Wikipedia language, including right-to-left scripts (Arabic, Hebrew, Persian), Indic scripts (Malayalam, Hindi) and Chinese, Japanese and Korean.
+
+PyAWB was first developed around 2009 as a command-line tool (hosted on SourceForge). It is now being rewritten from scratch as a port of the current AutoWikiBrowser (version 6.5). The rewrite is '''in development and not yet released'''. This page describes how it behaves on the wiki so that editors and server operators know what to expect, and how to reach its developers.
+
+== How it relates to AutoWikiBrowser ==
+PyAWB keeps AWB's behaviour: the same general fixes, typo fixing (using [[Wikipedia:AutoWikiBrowser/Typos]]), find and replace, list making and skip options. AWB's own unit tests are run against PyAWB to check that its fixes give the same results.
+
+What is different:
+* It is written in Python with the Qt toolkit instead of .NET and Windows Forms, so it does not need Windows.
+* Regular expressions use full Unicode rules: words in Malayalam, Hindi and Persian (with ZWNJ) are not split, and characters outside the Basic Multilingual Plane count as one character.
+* Every rule runs with a time limit, so a slow rule is skipped and reported instead of freezing the program.
+* Previews and the visual editor open in your web browser.
+
+== Using it on a wiki ==
+PyAWB follows the same [[Wikipedia:AutoWikiBrowser#Rules of use|rules of use]] as AWB. You are responsible for every edit you save with it.
+
+=== Approval (CheckPage) ===
+PyAWB uses AWB's existing approval system and does not add one of its own:
+* On each wiki it reads <code>Project:AutoWikiBrowser/CheckPageJSON</code> and <code>Project:AutoWikiBrowser/Config</code>. If your account is not approved there, PyAWB will not save edits.
+* It also reads the global page [[Wikipedia:AutoWikiBrowser/CheckPage/VersionJSON]], so names blocked from AWB everywhere are also blocked from PyAWB.
+* Bot mode is available only to accounts listed under <code>enabledbots</code>.
+
+=== Logging in ===
+Log in with a [[Special:BotPasswords|bot password]]. PyAWB does not store passwords in its settings file. If you ask it to remember a password, it keeps it in your operating system's keychain (Keychain on macOS, Credential Manager on Windows, Secret Service/KWallet on Linux).
+
+== For server operators ==
+PyAWB uses the MediaWiki Action API through [[mw:Manual:Pywikibot|Pywikibot]]. It:
+* sends a User-Agent of the form <code>PyAutoWikiBrowser/''version'' (''link to this page''; ''wiki''; User:''account'') Pywikibot/''version'' …</code>;
+* sends <code>maxlag=5</code> with edits and waits when the servers are lagged;
+* sends <code>assert=user</code>, <code>baserevid</code> and the base timestamp with every save, so edit conflicts are detected and logged-out edits are refused;
+* fetches Wikidata items in batches of 50.
+
+If PyAWB misbehaves on your wiki, please leave a message on [[{{TALKPAGENAME}}|the talk page]].
+
+== Edit summaries ==
+<!-- To be confirmed before release: whether PyAWB adds "using [[WP:AWB|AWB]]" to edit summaries and uses the AWB change tag where a wiki has one (as AWB does), or gets its own wording and tag. -->
+Like AWB, PyAWB adds a short note to edit summaries identifying the tool. The exact wording will be settled before the first release.
+
+== Reporting problems and contributing ==
+* Bugs and feature requests: [[{{TALKPAGENAME}}|talk page]].
+<!-- * Source code: add the repository link here when it is published. -->
+
+== Licence ==
+PyAWB is free software under the GNU General Public License, version 3 or later. It is based on AutoWikiBrowser (GPL-2.0-or-later); the original authors are credited in its source code.
+
+== See also ==
+* [[Wikipedia:AutoWikiBrowser]]
+* [[Wikipedia:AutoWikiBrowser/CheckPage]]
+* [[m:User-Agent policy|Wikimedia User-Agent policy]]
+
+[[Category:AutoWikiBrowser]]

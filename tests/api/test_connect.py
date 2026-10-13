@@ -2,10 +2,10 @@
 
 import pytest
 
-from awb_x.api import connect
-from awb_x.api.session import LoginException, WikiSession
-from awb_x.api.siteinfo import base_site_config
-from awb_x.settings.appconfig import Profile
+from pyawb.api import connect
+from pyawb.api.session import LoginException, WikiSession
+from pyawb.api.siteinfo import base_site_config
+from pyawb.settings.appconfig import Profile
 
 from .fakes import FakeTransport, userinfo
 from .test_credentials import MemoryKeyring
@@ -27,8 +27,8 @@ def session() -> WikiSession:
     return WikiSession(t, base_site_config("ml", "wikipedia"))
 
 
-PROFILE = Profile("ml", lang="ml", username="Example@AWB-X", remember_password=True)
-KEY = ("awb-x", "Example@AWB-X@https://ml.wikipedia.org/w")
+PROFILE = Profile("ml", lang="ml", username="Example@PyAWB", remember_password=True)
+KEY = ("pyawb", "Example@PyAWB@https://ml.wikipedia.org/w")
 
 
 def test_remembers_a_working_password() -> None:
@@ -46,7 +46,9 @@ def test_remembers_a_working_password() -> None:
 def test_forgets_when_not_remembering() -> None:
     kr = MemoryKeyring()
     kr.store[KEY] = "secret"
-    profile = Profile("ml", lang="ml", username="Example@AWB-X", remember_password=False)
+    profile = Profile(
+        "ml", lang="ml", username="Example@PyAWB", remember_password=False
+    )
     connect.log_in(session(), profile, keyring=kr)
     assert kr.store == {}
 

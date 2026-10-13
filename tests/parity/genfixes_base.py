@@ -1,9 +1,9 @@
 """Port of AWB's GenfixesTestsBase (UnitTests/GenfixesTests.cs): runs text through the Article
 general-fixes pipeline, as AWB does when saving a page with general fixes on."""
 
-from awb_x.core.article import Article, SkipOptions
-from awb_x.core.parsers.hidetext import HideText
-from awb_x.core.parsers.parsers import Parsers
+from pyawb.core.article import Article, SkipOptions
+from pyawb.core.parsers.hidetext import HideText
+from pyawb.core.parsers.parsers import Parsers
 
 
 class GenfixesTestsBase:

@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from awb_x.api.wikidata import fetch_items_by_id, fetch_items_for_titles, parse_entities
-from awb_x.core.site import SiteConfig
-from awb_x.core.wikidata import (
+from pyawb.api.wikidata import fetch_items_by_id, fetch_items_for_titles, parse_entities
+from pyawb.core.site import SiteConfig
+from pyawb.core.wikidata import (
     JULIAN,
     InterwikiCheck,
     WikidataItem,

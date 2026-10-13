@@ -2,7 +2,7 @@
 
 import keyring.errors
 
-from awb_x.api import credentials
+from pyawb.api import credentials
 
 
 class MemoryKeyring:
@@ -23,10 +23,20 @@ class MemoryKeyring:
 
 def test_save_load_forget() -> None:
     kr = MemoryKeyring()
-    credentials.save_password("https://ml.wikipedia.org/w/", "Alice@AWB-X", "s3cret", kr)
-    assert kr.store == {("awb-x", "Alice@AWB-X@https://ml.wikipedia.org/w"): "s3cret"}
-    assert credentials.load_password("https://ml.wikipedia.org/w", "Alice@AWB-X", kr) == "s3cret"
-    assert credentials.load_password("https://en.wikipedia.org/w/", "Alice@AWB-X", kr) is None
-    credentials.forget_password("https://ml.wikipedia.org/w/", "Alice@AWB-X", kr)
-    credentials.forget_password("https://ml.wikipedia.org/w/", "Alice@AWB-X", kr)  # no error
+    credentials.save_password(
+        "https://ml.wikipedia.org/w/", "Alice@PyAWB", "s3cret", kr
+    )
+    assert kr.store == {("pyawb", "Alice@PyAWB@https://ml.wikipedia.org/w"): "s3cret"}
+    assert (
+        credentials.load_password("https://ml.wikipedia.org/w", "Alice@PyAWB", kr)
+        == "s3cret"
+    )
+    assert (
+        credentials.load_password("https://en.wikipedia.org/w/", "Alice@PyAWB", kr)
+        is None
+    )
+    credentials.forget_password("https://ml.wikipedia.org/w/", "Alice@PyAWB", kr)
+    credentials.forget_password(
+        "https://ml.wikipedia.org/w/", "Alice@PyAWB", kr
+    )  # no error
     assert kr.store == {}

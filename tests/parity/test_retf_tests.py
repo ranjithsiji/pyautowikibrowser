@@ -1,11 +1,11 @@
-"""Port of AWB UnitTests/RetfTests.cs: typo fixing with RegExTypoFix (awb_x.rules.typos).
+"""Port of AWB UnitTests/RetfTests.cs: typo fixing with RegExTypoFix (pyawb.rules.typos).
 
 Ported by hand (the C# fixture's helper methods become a small class). Every AWB assertion is kept.
 """
 
 import pytest
 
-from awb_x.rules.typos import RegExTypoFix
+from pyawb.rules.typos import RegExTypoFix
 
 
 class Retf:
@@ -172,7 +172,7 @@ def test_dont_change_title(t: Retf) -> None:
     t.assert_no_fix("teh home", "teh")
 
 
-# AWB-X additions: behaviour AWB had through message boxes, and the per-rule timeout
+# PyAutoWikiBrowser additions: behaviour AWB had through message boxes, and the per-rule timeout
 
 
 def test_bad_rule_loads_nothing() -> None:

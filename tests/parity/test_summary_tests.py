@@ -10,20 +10,20 @@ with a comment explaining why.
 
 import pytest
 
-from awb_x.core import genfixes, namespace, tools
-from awb_x.core import wikiregexes as W
-from awb_x.core.dotnet_regex import DotNetOptions as O
-from awb_x.core.parsers.hidetext import HideText
-from awb_x.core.parsers.parsers import DateLocale
-from awb_x.core.rx import DotNetRegex
-from awb_x.core.site import Namespace, SiteConfig, current_site
+from pyawb.core import genfixes, namespace, tools
+from pyawb.core import wikiregexes as W
+from pyawb.core.dotnet_regex import DotNetOptions as O
+from pyawb.core.parsers.hidetext import HideText
+from pyawb.core.parsers.parsers import DateLocale
+from pyawb.core.rx import DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig, current_site
 from tests.parity import regex_assert
 from tests.parity.genfixes_base import genFixes
 from tests.parity.helpers import EN, cs_len, set_lang, set_project, set_site, utc_month_year
 from tests.parity.regex_assert import check_match, check_matches
 
 parser = genfixes.Parsers()  # AWB's RequiresParser
-from awb_x.core import summary as Summary  # noqa: E402
+from pyawb.core import summary as Summary  # noqa: E402
 
 
 def test_is_correct() -> None:

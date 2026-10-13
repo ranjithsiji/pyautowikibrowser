@@ -13,14 +13,14 @@ from typing import Any
 
 import pytest
 
-from awb_x.api.transport import Param
-from awb_x.core import genfixes, namespace, tools
-from awb_x.core import wikiregexes as W
-from awb_x.core.dotnet_regex import DotNetOptions as O
-from awb_x.core.parsers.hidetext import HideText
-from awb_x.core.parsers.parsers import DateLocale
-from awb_x.core.rx import DotNetRegex
-from awb_x.core.site import Namespace, SiteConfig, current_site
+from pyawb.api.transport import Param
+from pyawb.core import genfixes, namespace, tools
+from pyawb.core import wikiregexes as W
+from pyawb.core.dotnet_regex import DotNetOptions as O
+from pyawb.core.parsers.hidetext import HideText
+from pyawb.core.parsers.parsers import DateLocale
+from pyawb.core.rx import DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig, current_site
 from tests.parity import regex_assert
 from tests.parity.genfixes_base import genFixes
 from tests.parity.helpers import EN, cs_len, set_lang, set_project, set_site, utc_month_year
@@ -1583,7 +1583,7 @@ class _UnitTestExpansion:
 
 
 def subst_user_templates(text: str, title: str, regex: DotNetRegex | None) -> str:
-    from awb_x.api.tagger import WikiTemplateExpander
+    from pyawb.api.tagger import WikiTemplateExpander
 
     expander = WikiTemplateExpander(_UnitTestExpansion())
     return genfixes.subst_user_templates(text, title, regex, expander)
