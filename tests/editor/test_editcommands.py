@@ -126,3 +126,38 @@ def test_undo_line_changes() -> None:
     assert ec.undo_line_changes("a\nb\nc", "A\nB\nc", 2) == "A\nb\nc"
     # a deleted line comes back where it was
     assert ec.undo_line_changes(original, "one\nthree\nfour", 2) == original
+
+
+def test_find_all() -> None:
+    text = "Cat cat CAT\nFoo"
+    assert ec.find_all(text, "cat", False, False, "X") == [(0, 3), (4, 3), (8, 3)]
+    assert ec.find_all(text, "cat", False, True, "X") == [(4, 3)]
+    assert ec.find_all(text, "T\\nF", False, True, "X") == [(10, 3)]  # \n is a newline
+    assert ec.find_all(text, r"c\w+", True, False, "X") == [(0, 3), (4, 3), (8, 3)]
+    assert ec.find_all("Foo is Foo", "%%title%%", False, True, "Foo") == [(0, 3), (7, 3)]
+    assert ec.find_all(text, "", False, False, "X") == []
+
+
+def test_next_error_wraps() -> None:
+    errors = [(5, 2), (20, 3)]
+    assert ec.next_error(errors, 0) == (5, 2)
+    assert ec.next_error(errors, 5) == (20, 3)
+    assert ec.next_error(errors, 25) == (5, 2)
+    assert ec.next_error([], 0) is None
+
+
+def test_duplicate_link_pattern() -> None:
+    from pyawb.core.rx import DotNetRegex
+
+    rx = DotNetRegex(ec.duplicate_link_pattern("Foo bar (3)"))
+    assert rx.is_match("[[foo bar]]") and rx.is_match("[[Foo bar|x]]")
+    assert not rx.is_match("[[Foo Bar]]")
+
+
+def test_delink_selection() -> None:
+    assert ec.delink_selection("[[Foo]]") == "Foo"
+    assert ec.delink_selection("[[Foo|bar]]") == "bar"
+    # the pipe trick shows the title without namespace and bracketed part (AWB was off here)
+    assert ec.delink_selection("[[Help:Foo (bar)|]]") == "Foo"
+    assert ec.delink_selection("[[Foo|]]") == "Foo"
+    assert ec.delink_selection("Foo") is None

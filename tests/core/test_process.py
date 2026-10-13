@@ -160,3 +160,15 @@ def test_page_info_alerts_for_a_bare_page() -> None:
     )
     talk = process.page_info("x", Article("Talk:Foo"))
     assert "No category (may be one in a template)" not in talk.alerts
+
+
+def test_page_errors_positions() -> None:
+    from pyawb.core.article import Article
+    from pyawb.core.process import page_errors
+
+    text = "Text [[Foo|]] and [[|x]] and {{cite web|url=x|titel=y}} and [[a||b]]."
+    errors = page_errors(text, Article("X", text))
+    assert errors == tuple(sorted(errors)) and len(errors) >= 2
+    starts = [s for s, _ in errors]
+    assert text.index("[[|x]]") in starts and text.index("[[a||b]]") in starts
+    assert text.index("titel") in starts  # bad citation parameter

@@ -100,7 +100,7 @@ class ProcessOptions:
 
     general_fixes: bool = False
     replace_reference_tags: bool = True
-    restrict_defaultsort_changes: bool = True
+    restrict_defaultsort_changes: bool = False  # AWB's menu item is off by default
     no_mos_compliance_fixes: bool = False
     auto_tag: bool = False
     restrict_orphan_tagging: bool = True
@@ -465,3 +465,33 @@ def page_info(text: str, article: Article) -> PageInfo:
         dates_american=dates[locale.AMERICAN],
     )
     return PageInfo(stats, tuple(alerts), tuple(tools.duplicate_wiki_links(text)))
+
+
+def page_errors(text: str, article: Article) -> tuple[tuple[int, int], ...]:
+    """MainForm.HighlightErrors' sources, for Options ▸ Highlight errors: (start, length) of
+    each problem the alerts count, in text, first source first where two start at the same
+    place, sorted by position."""
+    info = Article(article.name, text, article.namespace_key)
+    found: dict[int, int] = {}
+    sources: list[dict[int, int]] = [
+        info.unbalanced_brackets(),
+        info.bad_cite_parameters(),
+        info.duplicate_wiki_project_banner_shell_parameters(),
+        info.dead_links(),
+        info.ambiguous_cite_template_dates(),
+        info.unclosed_tags(),
+        info.wiki_linked_headers(),
+        info.targetless_links(),
+        info.doublepipe_links(),
+    ]
+    if info.has_see_also_after_notes_references_or_external_links:
+        see_also = W.for_site(current_site()).SeeAlso
+        heading = next((h for h in W.Headings.matches(text) if see_also.is_match(h.value)), None)
+        if heading is not None:
+            sources.append({heading.index: heading.length})
+    if info.namespace_key == namespace.Namespace.ARTICLE:
+        sources.append(info.user_signature())
+    for errors in sources:
+        for start, length in errors.items():
+            found.setdefault(start, length)
+    return tuple(sorted(found.items()))

@@ -30,6 +30,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAbstractTextDocumentLayout,
     QAction,
+    QColor,
     QDesktopServices,
     QIcon,
     QKeySequence,
@@ -71,6 +72,7 @@ from pyawb.lists.listfilter import ListFilter
 from pyawb.lists.listmaker import SAVE_FILTERS, ArticleList, OutputFormat, save_list
 from pyawb.lists.sources import Input, Source, WikiContext
 from pyawb.lists.wikidataquery import EXAMPLE_QUERY, WikidataQueryListProvider
+from pyawb.ui import theme
 from pyawb.ui.icons import codex_icon
 from pyawb.ui.list_dialogs import AdvancedScraperDialog, ListFilterDialog
 from pyawb.ui.tasks import run_task
@@ -592,6 +594,7 @@ class ListMaker(QWidget):
             ArticleList.SKIPPED: codex_icon("arrowNext"),
         }
         done_color = self.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+        pre_parsed = QColor(theme.tokens(theme.Mode.SYSTEM)["background_color_success_subtle"])
         current = self.articles.selected_index
         chosen = set(self.articles.selected_indices)
         formatted = self.format_display_title.isChecked()
@@ -602,6 +605,9 @@ class ListMaker(QWidget):
                 rich = display_title_html(a.display_title, a.name)
                 if rich:
                     item.setData(RICH_ROLE, rich)
+            if a.pre_processed and not a.list_status:  # pre-parse mode found changes (AWB: green)
+                item.setBackground(pre_parsed)
+                item.setToolTip(f"{a.name} ({self.tr('pre-parsed: has changes')})")
             if a.list_status:
                 item.setIcon(icons.get(a.list_status, QIcon()))
                 item.setForeground(done_color)

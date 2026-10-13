@@ -171,3 +171,26 @@ def test_dry_run_processes_but_never_saves() -> None:
     with pytest.raises(ValueError):
         loop.save(result, result.text, "x")
     assert not any(p.get("action") == "edit" for p, _, _ in t.requests)
+
+
+def test_apply_changes_off_then_reparse() -> None:
+    """Options ▸ Apply changes automatically off: the page opens unchanged (no "No change"
+    skip); Re-parse applies the changes."""
+    loop, _ = loop_with("قط", open_response("قط", "حيوان [[أليف|أليف]] صغير."))
+    o = opts(general_fixes=True)
+    o.apply_changes = False
+    result = loop.load("قط", o)
+    assert not result.skipped and result.text == "حيوان [[أليف|أليف]] صغير."
+    assert loop.reparse(result, result.text, o) == "حيوان [[أليف]] صغير."
+
+
+def test_pre_parse_does_not_stop_for_messages() -> None:
+    loop, t = loop_with("قط", open_response("قط", "حيوان [[أليف|أليف]] صغير."))
+    info = userinfo("Alice")
+    info["query"]["userinfo"]["messages"] = True
+    t.responses[("meta", "userinfo")] = info
+    loop.session.refresh_user()
+    o = opts(general_fixes=True)
+    o.pre_parse = True
+    result = loop.load("قط", o)
+    assert not result.new_messages and result.text == "حيوان [[أليف]] صغير."

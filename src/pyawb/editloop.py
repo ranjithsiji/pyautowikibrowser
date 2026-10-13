@@ -69,6 +69,11 @@ class LoopOptions:
     section_summary: bool = True
     summary: str = ""  # the user's edit summary
     mode: Mode = Mode.EDIT
+    # Options menu: "Apply changes automatically" (off: pages open unchanged and changes come
+    # with Re-parse), "Sort interwiki links", "Use pre-parse mode" (no new-message stop)
+    apply_changes: bool = True
+    sort_interwikis: bool = True
+    pre_parse: bool = False
 
 
 @dataclass
@@ -130,7 +135,7 @@ class EditLoop:
             return self._skip(result, "Non-existent page")
         if page.exists and opts.skip_existent:
             return self._skip(result, "Existing page")
-        if self.session.user.has_messages:
+        if self.session.user.has_messages and not opts.pre_parse:
             result.new_messages = True
             return result
 
@@ -167,6 +172,9 @@ class EditLoop:
         if process.has_private_use_characters(page.text):
             return self._skip(result, "Page has character in Unicode Private Use Area")
 
+        if not opts.apply_changes:
+            return result  # AWB's CompleteProcessPage without ProcessPage: Re-parse applies them
+        self.parsers.sort_interwikis = opts.sort_interwikis
         process.process_page(article, opts.process, self.parsers, self.remove_text)
 
         # RunSkipChecks
@@ -232,6 +240,7 @@ class EditLoop:
         if article is None:
             raise ValueError("the page was not loaded")
         with use_site(self.session.site):
+            self.parsers.sort_interwikis = opts.sort_interwikis
             article.awb_change_article_text("Reparse", text, False)
             process.process_page(
                 article, opts.process, self.parsers, self.remove_text, main_process=False

@@ -44,6 +44,10 @@ WATCH_CHOICES = (
 
 class StartTab(QWidget):
     find_requested = Signal(str, bool, bool)  # text, regex, case sensitive
+    alert_clicked = Signal()  # go to the next highlighted error
+    link_clicked = Signal(str)  # a "Multiple wiki-links" entry: find that link
+    delink_requested = Signal()
+    false_positive = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -82,11 +86,19 @@ class StartTab(QWidget):
         self.save.setObjectName("saveButton")
         self.save.setProperty("primary", True)
         self.save.setToolTip(self.tr("Save the changes and continue (Ctrl+S)"))
+        # View ▸ Display false positives button: note the page in "False positives.txt"
+        self.false_button = QPushButton(self.tr("False"), self)
+        self.false_button.setToolTip(
+            self.tr("Record this page as a false positive (in False positives.txt)")
+        )
+        self.false_button.clicked.connect(self.false_positive)
+        self.false_button.hide()
         actions = QGridLayout()
         for col, b in enumerate((self.start, self.stop, self.preview, self.diff)):
             actions.addWidget(b, 0, col)
         actions.addWidget(self.skip, 1, 0, 1, 2)
         actions.addWidget(self.save, 1, 2, 1, 2)
+        actions.addWidget(self.false_button, 2, 0, 1, 4)
         for big in (self.skip, self.save):
             big.setMinimumHeight(36)
 
@@ -124,8 +136,16 @@ class StartTab(QWidget):
         self.links_box = QGroupBox(self.tr("Multiple wiki-links"), self)
         self.links_box.setObjectName("warningBox")
         self.links = QListWidget(self.links_box)
+        self.delink = QPushButton(self.tr("Delink selection"), self.links_box)
+        self.delink.setToolTip(
+            self.tr("Unlink the link selected in the edit box (click a link above to find it)")
+        )
+        self.delink.clicked.connect(self.delink_requested)
         ll = QVBoxLayout(self.links_box)
         ll.addWidget(self.links)
+        ll.addWidget(self.delink)
+        self.alerts.itemClicked.connect(lambda _item: self.alert_clicked.emit())
+        self.links.itemClicked.connect(lambda item: self.link_clicked.emit(item.text()))
         self.links_label = self.links_box  # shown only when there are repeated links
         alerts = QHBoxLayout()
         alerts.addWidget(alerts_box, 3)

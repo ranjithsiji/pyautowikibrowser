@@ -250,8 +250,8 @@ Run tests and pyright before calling any task done.
    Find and replace, Regular expression, General fixes), the Commons manual screenshots and AWB's designer
    files; each step names the AWB sources and manual chapter it must meet). Done: A1 (List menu, list context
    menu, missing list sources), B1 (List filter), A2 (edit box context menu, Re-parse, diff double click
-   undoes a line). Next: A3 Options/View
-   menus, A4 Skip/Logs, B2-B3 dialogs, C tabs and bot mode, D projects (save/load, AWB settings import),
+   undoes a line), A3 (Options, View, Tools and Help menus; pre-parse mode; highlighting). Next: A4
+   Skip/Logs, B2-B3 dialogs, C tabs and bot mode, D projects (save/load, AWB settings import),
    E tools (regex tester, list comparer/splitter, database scanner, Python modules, plugins), then the native
    word-level diff (wikidiff2 port). Find & replace rules are kept only for the session until projects (D1).
 7. Packaging, auto-update, translatewiki.net integration (plan step F).

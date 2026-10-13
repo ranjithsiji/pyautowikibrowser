@@ -27,22 +27,29 @@ import json
 import tempfile
 import time
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import regex
 from PySide6.QtCore import QLocale, Qt, QUrl
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
     QCloseEvent,
+    QColor,
     QDesktopServices,
     QFont,
     QKeySequence,
+    QShortcut,
     QShowEvent,
+    QTextCharFormat,
+    QTextCursor,
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDockWidget,
     QInputDialog,
@@ -53,6 +60,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QSplitter,
     QTabWidget,
+    QTextEdit,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -139,6 +147,9 @@ def diff_colors() -> DiffColors:
     )
 
 
+HELP_URL = "https://en.wikipedia.org/wiki/Wikipedia:AutoWikiBrowser/User_manual"
+
+
 class _Rate:
     """Events in the last minute (AWB's Pages/min, Edits/min)."""
 
@@ -181,6 +192,7 @@ class MainWindow(QMainWindow):
         # AWB's LastArticle: the text at the last preview or save attempt, for "Replace text
         # with last edit"; cleared after a save and when another page is loaded
         self.last_text = ""
+        self.errors: tuple[tuple[int, int], ...] = ()  # Highlight errors: (start, length)
 
         # -- edit box (editor toolbar, this page's summary, the editor) --
         edit_box = QWidget(self)
@@ -228,6 +240,10 @@ class MainWindow(QMainWindow):
         self.minor = self.start_tab.minor
         self.watch = self.start_tab.watch
         self.start_tab.find_requested.connect(self.find_in_editor)
+        self.start_tab.alert_clicked.connect(self.next_error)
+        self.start_tab.link_clicked.connect(self.find_link)
+        self.start_tab.delink_requested.connect(self.delink_selection)
+        self.start_tab.false_positive.connect(self.record_false_positive)
         self.save_button = self.start_tab.save
         self.skip_button = self.start_tab.skip
         self.diff_button = self.start_tab.diff
@@ -378,57 +394,211 @@ class MainWindow(QMainWindow):
         self._update_user()
 
     def _make_menus(self) -> None:
-        file_menu = self.menuBar().addMenu(self.tr("&File"))
-        self.login_action = QAction(self.tr("Log in/Profiles…"), self)
-        self.login_action.setShortcut(QKeySequence("Ctrl+L"))
-        self.login_action.triggered.connect(self.log_in)
-        self.logout_action = QAction(self.tr("Log out"), self)
-        self.logout_action.triggered.connect(self.log_out)
-        refresh = QAction(self.tr("Refresh status/typos"), self)
-        refresh.setShortcut(QKeySequence("Ctrl+R"))
-        refresh.triggered.connect(self.refresh_typos)
-        quit_action = QAction(self.tr("Exit"), self)
-        quit_action.setShortcut(QKeySequence("Ctrl+Q"))
-        quit_action.triggered.connect(self.close)
+        """AWB's menu bar (docs/design/awb-feature-inventory.md, "Target menu bar"); the
+        Plugins menu comes with plugins, Settings is PyAWB's own."""
+
+        def action(
+            text: str, slot: Any = None, key: str = "", checked: bool | None = None
+        ) -> QAction:
+            a = QAction(text, self)
+            if key:
+                a.setShortcut(QKeySequence(key))
+            if checked is not None:
+                a.setCheckable(True)
+                a.setChecked(checked)
+                if slot is not None:
+                    a.toggled.connect(slot)
+            elif slot is not None:
+                a.triggered.connect(lambda _=False: slot())
+            return a
+
+        bar = self.menuBar()
+        file_menu = bar.addMenu(self.tr("&File"))
+        self.login_action = action(self.tr("Log in/Profiles…"), self.log_in, "Ctrl+L")
+        self.logout_action = action(self.tr("Log out"), self.log_out)
+        refresh = action(self.tr("Refresh status/typos"), self.refresh_typos, "Ctrl+R")
         file_menu.addActions([self.login_action, self.logout_action, refresh])
         file_menu.addSeparator()
-        file_menu.addAction(quit_action)
+        file_menu.addAction(action(self.tr("Exit"), self.close, "Ctrl+Q"))
 
-        list_menu = self.menuBar().addMenu(self.tr("&List"))
+        view_menu = bar.addMenu(self.tr("&View"))
+        self.show_toolbar_action = action(
+            self.tr("Show toolbar"), self.loop_toolbar.setVisible, checked=True
+        )
+        self.show_panel_action = action(
+            self.tr("Show control panel"), self.options.setVisible, "F11", checked=True
+        )
+        self.enlarge_action = action(
+            self.tr("Enlarge edit box"), self.set_enlarged, "F10", checked=False
+        )
+        self.show_edit_toolbar_action = action(
+            self.tr("Show edit box toolbar"), self.toolbar.setVisible, checked=True
+        )
+        self.show_diff_action = action(
+            self.tr("Show the diff pane"), self.diff.setVisible, checked=False
+        )
+        self.false_positives_action = action(
+            self.tr("Display false positives button"),
+            self.start_tab.false_button.setVisible,
+            checked=False,
+        )
+        view_menu.addActions(
+            [
+                self.show_toolbar_action,
+                self.show_panel_action,
+                self.enlarge_action,
+                self.show_edit_toolbar_action,
+                self.show_diff_action,
+            ]
+        )
+        view_menu.addSeparator()
+        view_menu.addAction(self.false_positives_action)
+
+        list_menu = bar.addMenu(self.tr("&List"))
         for a in self.list_maker.list_menu_actions():
             if a is None:
                 list_menu.addSeparator()
             else:
                 list_menu.addAction(a)
 
-        settings_menu = self.menuBar().addMenu(self.tr("&Settings"))
-        for text, page, key in (
-            (self.tr("Theme…"), "theme", ""),
-            (self.tr("Language…"), "language", ""),
-            (self.tr("Fonts…"), "fonts", ""),
-            (self.tr("User profiles…"), "profiles", ""),
-            (None, "", ""),
-            (self.tr("Preferences…"), "general", "Ctrl+P"),
+        options_menu = bar.addMenu(self.tr("&Options"))
+        options_menu.addAction(
+            action(self.tr("Preferences…"), lambda: self.open_settings("general"), "Ctrl+P")
+        )
+        self.pre_parse_action = action(
+            self.tr("Use pre-parse mode"), self._pre_parse_toggled, "Ctrl+Shift+E", checked=False
+        )
+        options_menu.addAction(self.pre_parse_action)
+        options_menu.addSeparator()
+        self.follow_redirects_action = self._mirror(
+            action(self.tr("Follow redirects"), checked=True), self.options.follow_redirects
+        )
+        self.apply_changes_action = action(self.tr("Apply changes automatically"), checked=True)
+        options_menu.addActions([self.follow_redirects_action, self.apply_changes_action])
+        options_menu.addSeparator()
+        self.focus_end_action = action(self.tr("Auto focus end of the edit box"), checked=False)
+        self.no_section_summary_action = self._mirror(
+            action(self.tr("Do not use section edit summaries"), checked=False),
+            self.options.section_summary,
+            inverted=True,
+        )
+        self.restrict_defaultsort_action = action(
+            self.tr("Restrict {{DEFAULTSORT}} change/addition"), checked=False
+        )
+        self.restrict_orphan_action = action(
+            self.tr("Restrict orphan tag addition to linkless pages"), checked=True
+        )
+        self.no_mos_action = action(self.tr("Do not apply WP:MOS fixes"), checked=False)
+        self.syntax_action = action(
+            self.tr("Highlight syntax in edit box"), self._set_syntax_highlight, checked=True
+        )
+        self.highlight_find_action = action(
+            self.tr("Highlight Find matches"), lambda _on: self.highlight(), checked=False
+        )
+        self.highlight_errors_action = action(
+            self.tr("Highlight errors"), lambda _on: self.highlight(), checked=False
+        )
+        options_menu.addActions(
+            [
+                self.focus_end_action,
+                self.no_section_summary_action,
+                self.restrict_defaultsort_action,
+                self.restrict_orphan_action,
+                self.no_mos_action,
+                self.syntax_action,
+                self.highlight_find_action,
+                self.highlight_errors_action,
+            ]
+        )
+        options_menu.addSeparator()
+        self.minor_action = self._mirror(
+            action(self.tr("Mark all as minor"), checked=False), self.minor
+        )
+        options_menu.addAction(self.minor_action)
+        watch_menu = options_menu.addMenu(self.tr("Watchlist"))
+        watch_group = QActionGroup(self)
+        for i in range(self.watch.count()):
+            a = action(self.watch.itemText(i), checked=i == self.watch.currentIndex())
+            a.triggered.connect(lambda _=False, n=i: self.watch.setCurrentIndex(n))
+            watch_group.addAction(a)
+            watch_menu.addAction(a)
+        self.watch.currentIndexChanged.connect(lambda n: watch_group.actions()[n].setChecked(True))
+        options_menu.addSeparator()
+        self.sort_interwikis_action = action(self.tr("Sort interwiki links"), checked=True)
+        self.replace_refs_action = action(self.tr("Replace reference tags"), checked=True)
+        options_menu.addActions([self.sort_interwikis_action, self.replace_refs_action])
+        # with general fixes off, AWB greys out what only they do
+        self.options.general_fixes.toggled.connect(self.sort_interwikis_action.setEnabled)
+
+        tools_menu = bar.addMenu(self.tr("&Tools"))
+        tools_menu.addAction(action(self.tr("Reset saved/skipped counts"), self.reset_counts))
+        tools_menu.addSeparator()
+        tools_menu.addAction(action(self.tr("Invalidate cache"), self.invalidate_cache))
+
+        settings_menu = bar.addMenu(self.tr("&Settings"))
+        for text, page in (
+            (self.tr("Theme…"), "theme"),
+            (self.tr("Language…"), "language"),
+            (self.tr("Fonts…"), "fonts"),
+            (self.tr("User profiles…"), "profiles"),
+            (None, ""),
+            (self.tr("Preferences…"), "general"),
         ):
             if text is None:
                 settings_menu.addSeparator()
                 continue
-            a = QAction(text, self)
-            if key:
-                a.setShortcut(QKeySequence(key))
-            a.triggered.connect(lambda _=False, p=page: self.open_settings(p))
-            settings_menu.addAction(a)
+            settings_menu.addAction(action(text, lambda p=page: self.open_settings(p)))
 
-        view_menu = self.menuBar().addMenu(self.tr("&View"))
-        self.show_diff_action = QAction(self.tr("Show the diff pane"), self)
-        self.show_diff_action.setCheckable(True)
-        self.show_diff_action.toggled.connect(self.diff.setVisible)
-        view_menu.addAction(self.show_diff_action)
+        help_menu = bar.addMenu(self.tr("&Help"))
+        help_menu.addAction(action(self.tr("Help"), self.open_help, "F1"))
+        help_menu.addAction(action(self.tr("About PyAutoWikiBrowser"), self._about))
 
-        help_menu = self.menuBar().addMenu(self.tr("&Help"))
-        about = QAction(self.tr("About PyAutoWikiBrowser"), self)
-        about.triggered.connect(self._about)
-        help_menu.addAction(about)
+        # AWB's keys on the main form: Ctrl+G starts, Esc stops
+        start_key = QShortcut(QKeySequence("Ctrl+G"), self)
+        start_key.activated.connect(self.start)
+        stop_key = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        stop_key.activated.connect(lambda: self.stop() if self.running else None)
+
+    def _mirror(self, a: QAction, box: QCheckBox, inverted: bool = False) -> QAction:
+        """A menu item that is the same setting as a check box on the control tabs."""
+        a.setChecked(box.isChecked() != inverted)
+        a.toggled.connect(lambda on: box.setChecked(on != inverted))
+        box.toggled.connect(lambda on: a.setChecked(on != inverted))
+        return a
+
+    def set_enlarged(self, on: bool) -> None:
+        """View ▸ Enlarge edit box: the edit tabs take the whole window but the list."""
+        self.options.setVisible(not on and self.show_panel_action.isChecked())
+        self.diff.setVisible(
+            not on and (self.current is not None or self.show_diff_action.isChecked())
+        )
+
+    def _set_syntax_highlight(self, on: bool) -> None:
+        self.highlighter.setDocument(self.editor.document() if on else None)
+
+    def _pre_parse_toggled(self, on: bool) -> None:
+        self.set_status(
+            self.tr("Pre-parse mode: pages with changes are marked and kept; the rest skipped")
+            if on
+            else self.tr("Pre-parse mode off")
+        )
+
+    def reset_counts(self) -> None:
+        """Tools ▸ Reset saved/skipped counts."""
+        self.edits = self.skips = self.new_pages = 0
+        self.edit_rate, self.page_rate = _Rate(), _Rate()
+        self._update_counts()
+
+    def invalidate_cache(self) -> None:
+        """Tools ▸ Invalidate cache: forget the cached wiki data (AWB's ObjectCache)."""
+        from pyawb.api.cache import ObjectCache
+
+        ObjectCache.global_cache().invalidate()
+        self.set_status(self.tr("Cache cleared"))
+
+    def open_help(self) -> None:
+        """Help (F1): the AWB user manual, which PyAutoWikiBrowser follows."""
+        self.open_url(HELP_URL)
 
     def _about(self) -> None:
         QMessageBox.about(
@@ -772,6 +942,7 @@ class MainWindow(QMainWindow):
         assert self.session is not None and self.loop is not None
         if (
             self.mode is Mode.EDIT
+            and not self.pre_parse_action.isChecked()
             and self.session.site.project != "custom"
             and not self.summary.currentText().strip()
         ):
@@ -806,6 +977,7 @@ class MainWindow(QMainWindow):
         opts.mode = self.mode
         # List ▸ Remove non-main space also skips redirects to other namespaces (AWB)
         opts.filter_non_main_space = self.list_maker.articles.filter_non_main_auto
+        self._apply_menu_options(opts)
         self.start_tab.remember_summary()
         articles = self.list_maker.articles
         if not 0 <= index < len(articles):
@@ -943,6 +1115,9 @@ class MainWindow(QMainWindow):
             self.current = result
             self.skip_page(result.skip_reason or "")
             return
+        if self.opts is not None and self.opts.pre_parse:
+            self._pre_parsed(result)
+            return
 
         previous = self.current_title()
         self.current = result
@@ -960,6 +1135,8 @@ class MainWindow(QMainWindow):
             self.set_status(self.tr("This page has {{inuse}}: consider skipping it"))
         self.edit_tabs.setCurrentIndex(0)
         self.editor.setReadOnly(self.mode is Mode.READ_ONLY)
+        self.highlight()
+        self._place_cursor()
         self._update_buttons()
         if self.mode is Mode.READ_ONLY:
             self.set_status(self.tr("Read only: %1").replace("%1", title))
@@ -1068,6 +1245,8 @@ class MainWindow(QMainWindow):
                 with use_site(self.wiki_site()):
                     self.start_tab.set_page_info(process.page_info(str(new), result.article))
             self._report_timeouts()
+            self.highlight()
+            self._place_cursor()
             self.show_diff()
 
         run_task(lambda: loop.reparse(result, text, opts), done, self._step_failed)
@@ -1141,6 +1320,138 @@ class MainWindow(QMainWindow):
             apply_edit(self.editor, editcommands.whole_text(self.editor.toPlainText(), new))
             self.go_to_line(line)
             self.show_diff()
+
+    def _apply_menu_options(self, opts: LoopOptions) -> None:
+        """The Options menu's settings for the next page."""
+        opts.apply_changes = self.apply_changes_action.isChecked()
+        opts.sort_interwikis = self.sort_interwikis_action.isChecked()
+        opts.pre_parse = self.pre_parse_action.isChecked()
+        if opts.pre_parse and opts.mode is Mode.READ_ONLY:
+            opts.mode = Mode.DRY_RUN  # pre-parsing processes pages; nothing is saved
+        p = opts.process
+        p.restrict_defaultsort_changes = self.restrict_defaultsort_action.isChecked()
+        p.restrict_orphan_tagging = self.restrict_orphan_action.isChecked()
+        p.no_mos_compliance_fixes = self.no_mos_action.isChecked()
+        p.replace_reference_tags = self.replace_refs_action.isChecked()
+
+    def _pre_parsed(self, result: LoadResult) -> None:
+        """Pre-parse mode: the page has changes, so it stays in the list (marked) and the
+        next one is processed; at the end, the loop stops (RunSkipChecks' pre-parse branch)."""
+        index = self.current_index
+        articles = self.list_maker.articles
+        if 0 <= index < len(articles):
+            articles.items[index].pre_processed = True
+        self.page_rate.add()
+        following = index + 1
+        if self.running and following < len(articles):
+            self.load_index(following)
+            return
+        self.stop()
+        self.list_maker.refresh()
+        self.set_status(self.tr("Pre-parsing finished"))
+
+    def _place_cursor(self) -> None:
+        """Options ▸ Auto focus end of the edit box: the cursor at the end, else the start."""
+        cursor = self.editor.textCursor()
+        cursor.movePosition(
+            cursor.MoveOperation.End
+            if self.focus_end_action.isChecked()
+            else cursor.MoveOperation.Start
+        )
+        self.editor.setTextCursor(cursor)
+        self.editor.ensureCursorVisible()
+
+    def highlight(self) -> None:
+        """Options ▸ Highlight Find matches (yellow) and Highlight errors (red), as extra
+        selections, so the text itself and its undo history stay untouched."""
+        selections: list[QTextEdit.ExtraSelection] = []
+        self.errors = ()
+        if self.current is not None and self.current.article is not None:
+            t = theme.tokens(theme.Mode.SYSTEM)
+            text = self.editor.toPlainText()
+            title = self.current_title() or ""
+
+            def mark(spans: Sequence[tuple[int, int]], background: str, color: str) -> None:
+                fmt = QTextCharFormat()
+                fmt.setBackground(QColor(background))
+                fmt.setForeground(QColor(color))
+                for start, length in spans[:100]:  # AWB: only the first 100
+                    sel = QTextEdit.ExtraSelection()
+                    sel.cursor = QTextCursor(self.editor.document())
+                    sel.cursor.setPosition(start)
+                    sel.cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+                    sel.format = fmt
+                    selections.append(sel)
+
+            if self.highlight_find_action.isChecked():
+                st = self.start_tab
+                try:
+                    with use_site(self.wiki_site()):
+                        found = editcommands.find_all(
+                            text,
+                            st.find_text.text(),
+                            st.find_regex.isChecked(),
+                            st.find_case.isChecked(),
+                            title,
+                        )
+                except (ValueError, regex.error):
+                    found = []
+                mark(found, t["background_color_warning_subtle"], t["color_base"])
+            if self.highlight_errors_action.isChecked():
+                with use_site(self.wiki_site()):
+                    self.errors = process.page_errors(text, self.current.article)
+                mark(self.errors, t["background_color_error_subtle"], t["color_error"])
+        self.editor.setExtraSelections(selections)
+
+    def next_error(self) -> None:
+        """A click on the alerts: select the next highlighted error (lbAlerts_Click)."""
+        if not self.errors:
+            return
+        span = editcommands.next_error(self.errors, self.editor.textCursor().selectionStart())
+        if span is not None:
+            self.edit_tabs.setCurrentIndex(0)
+            select(self.editor, span[0], span[0] + span[1], self.editor.toPlainText())
+            self.editor.ensureCursorVisible()
+
+    def find_link(self, entry: str) -> None:
+        """A click on "Multiple wiki-links": find the next of those links in the edit box."""
+        pattern = editcommands.duplicate_link_pattern(entry)
+        if pattern:
+            self.find_in_editor(pattern, True, True)
+
+    def delink_selection(self) -> None:
+        """Start tab ▸ Delink selection: the selected [[link]] becomes plain text."""
+        cursor = self.editor.textCursor()
+        new = editcommands.delink_selection(cursor.selectedText())
+        if new is None:
+            QMessageBox.information(
+                self,
+                self.tr("Delink selection"),
+                self.tr("Select a link to remove, by hand or by clicking a link in the list."),
+            )
+            return
+        start = cursor.selectionStart()
+        apply_edit(
+            self.editor,
+            editcommands.replace_selection(
+                self.editor.toPlainText(), start, cursor.selectionEnd(), new
+            ),
+        )
+
+    def record_false_positive(self) -> None:
+        """The False button: add the page to "False positives.txt" (AWB's FalsePositiveClick)."""
+        title = self.current_title()
+        if not title:
+            return
+        path = paths.data_dir() / "False positives.txt"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write("#[[" + title + "]]\n")
+        except OSError as e:
+            QMessageBox.warning(self, self.tr("False positives"), str(e))
+            return
+        self.set_status(self.tr("Recorded as a false positive: %1").replace("%1", title))
 
     def find_in_editor(self, text: str, is_regex: bool, case_sensitive: bool) -> None:
         """The Start tab's Find: the next match in the editor (.NET regex syntax via core.rx)."""
@@ -1273,6 +1584,7 @@ class MainWindow(QMainWindow):
     def _clear_page(self) -> None:
         self.current = None
         self.editor.clear()
+        self.highlight()
         self.diff.clear()
         if not self.show_diff_action.isChecked():
             self.diff.hide()

@@ -38,11 +38,11 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 ### View
 | Item | Status | Phase / notes |
 |---|---|---|
-| Show toolbar | done (always shown) | A: make it a toggle |
-| Show control panel (F11) | missing | A |
-| Enlarge edit box (F10) | missing | A |
-| Show edit box toolbar | missing (always shown) | A |
-| Display false positives button; False positives.txt | missing | A |
+| Show toolbar | done | |
+| Show control panel (F11) | done | |
+| Enlarge edit box (F10) | done | |
+| Show edit box toolbar | done | |
+| Display false positives button; False positives.txt | done | the file is in PyAWB's data directory |
 | (PyAWB) Show the diff pane | done | |
 
 ### List
@@ -67,26 +67,26 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Preferences… (Ctrl+P) | partial | see Preferences below |
 | Summaries… / Default Edit Summaries… | missing | B |
 | Auto save settings file every 10 edits | missing | D |
-| Use pre-parse mode | missing | A (auto-skip run; pages kept in the list marked "pre-parsed") |
-| Follow redirects | done (Options tab) | A: also in the menu |
-| Apply changes automatically (off = only on Re-parse) | missing | A |
-| Auto focus end of the edit box | missing | A |
-| Do not use section edit summaries | done (Options tab) | A: menu |
-| Restrict {{DEFAULTSORT}} change/addition | partial (engine option, always on) | A |
-| Restrict orphan tag addition to linkless pages | partial (engine option, always on) | A |
-| Do not apply WP:MOS fixes | partial (engine option, always off) | A |
-| Highlight syntax in edit box | done (always) | A: toggle |
-| Highlight Find matches | missing | A |
-| Highlight errors (clickable alerts, Ctrl+B) | missing | A |
-| Mark all as minor | partial (Minor edit on the Start tab) | A |
-| Watchlist behaviour | done (Start tab) | |
-| Sort interwiki links | missing (engine always sorts) | A |
-| Replace reference tags | partial (engine option, always on) | A |
+| Use pre-parse mode (Ctrl+Shift+E) | done | pages with changes stay, marked green; works in Read only mode too (processed as a dry run) |
+| Follow redirects | done | the menu item and the Options tab box are one setting |
+| Apply changes automatically (off = only on Re-parse) | done | |
+| Auto focus end of the edit box | done | |
+| Do not use section edit summaries | done | mirrors the Options tab box |
+| Restrict {{DEFAULTSORT}} change/addition | done | off by default, as in AWB (the engine had it on) |
+| Restrict orphan tag addition to linkless pages | done | |
+| Do not apply WP:MOS fixes | done | |
+| Highlight syntax in edit box | done | on by default (AWB: off) |
+| Highlight Find matches | done | extra selections, so undo is untouched |
+| Highlight errors (clickable alerts) | done | `process.page_errors`; a click on the alerts selects the next error |
+| Mark all as minor | done | mirrors Minor edit on the Start tab |
+| Watchlist behaviour | done | Start tab and Options ▸ Watchlist ▸ |
+| Sort interwiki links | done | |
+| Replace reference tags | done | |
 
 ### Preferences (dialog)
 | Item | Status | Phase / notes |
 |---|---|---|
-| General: minimize to tray | missing | A (QSystemTrayIcon) |
+| General: minimize to tray | missing | B3 (QSystemTrayIcon) |
 | General: warn on exit | done | |
 | General: save page list with settings | missing | D |
 | General: low thread priority | missing | A |
@@ -116,15 +116,15 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Database scanner (Ctrl+Shift+D) | missing | E |
 | List comparer | missing (model: `lists.listmaker.compare_lists`) | E |
 | List splitter | missing | E |
-| Reset saved/skipped counts | missing | A |
+| Reset saved/skipped counts | done | |
 | Submit stats | n/a | no usage statistics |
 | Profile typos | missing | E |
-| Invalidate cache | missing | A (`api.cache`) |
+| Invalidate cache | done | |
 
 ### Help
 | Item | Status | Phase / notes |
 |---|---|---|
-| Help (F1): the manual in a browser | missing | A (opens the manual / the tool page) |
+| Help (F1): the manual in a browser | done | AWB's user manual, until the tool page has one |
 | Usage statistics | n/a | |
 | Check for updates | missing | F |
 | About | done | |
@@ -173,11 +173,11 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Skip: page exists / doesn't exist / don't care (radio) | partial (two check boxes) | A |
 | Bots tab: auto save + delay, max edits, suppress "using AWB", nudge timer, auto shutdown | missing | C |
 | Start: summary, lock, minor, statistics, alerts, multiple wiki-links | done | |
-| Start: Delink selection (multiple wiki-links) | missing | A |
+| Start: Delink selection (multiple wiki-links); a click on a link finds it | done | the pipe trick gives what MediaWiki shows |
 | Start: Start, Stop, Preview, Diff, Skip, Save, Find | done | |
 | Start: Watch/Unwatch, Move, Protect, Delete (admins) | missing | C |
-| Start: False (false positives) | missing | A |
-| Start: shortcuts Ctrl+G start, Esc stop | missing | A |
+| Start: False (false positives) | done | |
+| Start: shortcuts Ctrl+G start, Esc stop | done | |
 | Edit box | done | |
 | History tab (+ diffs, context menu: open in browser, refresh) | missing | C |
 | What links here tab | missing | C |
@@ -217,8 +217,8 @@ These items were missing from the tables above.
 |---|---|---|---|
 | Diff | Single click on a line focuses the edit box there; **double click undoes all changes on that line** | done | `editcommands.undo_line_changes` |
 | Diff | Persian AWB mirrors the whole window and the diff in RTL | done | `diffhtml` mirrors, Qt layout direction |
-| Toolbar | Show/hide control panel and show/hide parameters buttons; Delete (admins); False positive | missing | A (panel), C (delete) |
-| Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | partial (no timer, no notifications) | A |
+| Toolbar | Show/hide control panel and show/hide parameters buttons; Delete (admins); False positive | partial (View menu items) | C (delete) |
+| Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | partial (no timer, no notifications) | B3 (with the moving-average timer preference), C4 (bot timer) |
 | View | Show toolbar, Show control panel, Enlarge edit box, Show edit box toolbar, Display false positives button | missing | A |
 | List context | Format page titles per displaytitle | done | italics, bold, sub, sup (AWB: italics only); looked up with `api.pageinfo` |
 | List context | Select ▸ All (Ctrl+A) / None / Inverse (Ctrl+Shift+I); Remove ▸ Selected / All / Duplicates / Non-main space | done | |
@@ -228,9 +228,9 @@ These items were missing from the tables above.
 | Logging to file tab | Log to XHTML / wiki code, verbose, folder; upload logs to a wiki page (location `$USER/Logs`, category, job name, max lines, watch, open in browser); status | missing | D |
 | Edit box menu | Paste more ▸ 10 slots (Ctrl+1…Ctrl+0) + Configure…; Go to line ▸ text box; Insert tag ▸ `{{-stub}}` box | done | |
 | Edit box | Custom toolbar buttons added by plugins and modules (Persian screenshot) | missing | E |
-| Options menu | Use pre-parse mode Ctrl+Shift+E | missing | A |
+| Options menu | Use pre-parse mode Ctrl+Shift+E | done | |
 | Tools | C# Eval (run a snippet against the page) → Python console | missing | E |
-| Tray | Minimize to tray menu: Show / Hide / Exit | missing | A |
+| Tray | Minimize to tray menu: Show / Hide / Exit | missing | B3 (with its preference) |
 | Profiles dialog | Table ID / user / password saved? / default settings file / notes; Login, Add, Edit, Delete; quick login with "save this account / password" | done differently | start screen + Settings → User profiles; per-profile default project: D |
 | Disambig tab | Enable, link to disambiguate + Load links (variants from the disambiguation page), variants box, skip when none made, ± context characters | missing | C |
 | Bots tab | Auto save, max edits, delay between edits, suppress "using AWB"; nudge timer (resave if stuck, total nudges, reset, skip if first nudge fails); auto shutdown (shutdown/standby/restart/hibernate) | missing | C |
@@ -285,7 +285,7 @@ running app with screenshots. One commit per step.
 |---|---|---|---|
 | A1 ✔ | **List**: List menu with shortcuts; list context menu (open page/history, cut/copy/paste, Select ▸, Remove ▸, Add selected to list from ▸, move to top/bottom, convert to/from talk, displaytitle, filter, save list in 4 formats, sort/reverse sort); keep alphabetized; add-one-title box; stop while making a list; missing sources (category user depth, user contribs with number, HTML scraper plain/advanced regex, CheckWiki URL/number) | `ListMaker.cs`, `ListBox2.cs`, `Lists/Providers/*` | User manual: Make list, list menus |
 | A2 ✔ | **Edit box**: context menu (word wrap, paste more + configure, save text to file, go to line, insert ▸ birth/death cats and category Ctrl+T, insert tag ▸, convert list to `*`/`#`, unicodify selected, bypass all redirects, fix all excess whitespace, re-parse F5, comment selected Ctrl+K, open page/talk/history/selection in browser, replace with last edit, undo all changes); diff double click undoes a line | `Main.cs` (mnuTextBox handlers), `ConfigurePasteMoreItems.cs`, `Tools.cs` | Find and replace: minor rules not applied on Re-parse; Regular expression: shortcut editing macros run by Re-parse |
-| A3 | **Options menu** (all toggles wired to `ProcessOptions`/engine flags), pre-parse mode, apply changes automatically, highlight Find matches/errors, auto focus end; **View menu** (toolbar, control panel F11, enlarge edit box F10, edit box toolbar, false positives); Tools ▸ reset counts, invalidate cache; Help F1; status bar timer and talk-page notifications; tray; Start tab Delink selection, false positive button, Ctrl+G/Esc | `Main.cs`, `Article.cs` alerts | General fixes: the Options menu switches (restrict DEFAULTSORT, orphan tagging, MOS fixes, sort interwikis, reference tags) |
+| A3 ✔ | **Options menu** (all toggles wired to `ProcessOptions`/engine flags), pre-parse mode, apply changes automatically, highlight Find matches/errors, auto focus end; **View menu** (toolbar, control panel F11, enlarge edit box F10, edit box toolbar, false positives); Tools ▸ reset counts, invalidate cache; Help F1; Start tab Delink selection, false positive button, Ctrl+G/Esc | `Main.cs`, `Article.cs` alerts | General fixes: the Options menu switches (restrict DEFAULTSORT, orphan tagging, MOS fixes, sort interwikis, reference tags) |
 | A4 | **Skip tab** extras (spam filter blocked, only cosmetic changes, no alerts, exists/doesn't/don't care radio); **Logs** context menu (add to list, cut/copy, remove, select, open page/diff/history, filter show only/exclude, clear, reset) | `LogControl.cs`, `Main.cs` skip checks | User manual: Skip tab, Logs |
 | B1 ✔ | **List filter** dialog (namespaces, title, set operations, sort, duplicates) | `ListFilterForm.cs` | Database Scanner: results Filter uses the same dialog |
 | B2 | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |

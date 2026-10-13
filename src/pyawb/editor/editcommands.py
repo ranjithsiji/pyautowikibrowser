@@ -21,13 +21,13 @@ AWB wrote "\\r\\n" (Windows Forms text boxes); the Qt editor holds "\\n".
 from __future__ import annotations
 
 import difflib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from pyawb.core import tools, wikiregexes
 from pyawb.core.parsers import categorydefaultsort
 from pyawb.core.parsers.hidetext import HideText
 from pyawb.core.parsers.parsers import Parsers, remove_all_white_space
-from pyawb.core.rx import DotNetMatch, DotNetRegex
+from pyawb.core.rx import DotNetMatch, DotNetOptions, DotNetRegex, escape
 from pyawb.core.site import current_site
 from pyawb.editor.textselection import Edit, EncapsulateOptions, encapsulate_selection
 
@@ -210,3 +210,62 @@ def undo_line_changes(original: str, current: str, line: int) -> str | None:
         if j1 <= index < j2 or (j1 == j2 and index == j1):
             return "\n".join(new[:j1] + old[i1:i2] + new[j2:])
     return None
+
+
+def find_all(
+    text: str, find: str, is_regex: bool, case_sensitive: bool, title: str
+) -> list[tuple[int, int]]:
+    """ArticleTextBox.FindAll for Options ▸ Highlight Find matches: (start, length) of each
+    non-empty match. Keywords such as %%title%% apply; a plain search keeps "\\n" as a newline."""
+    if not find:
+        return []
+    pattern = tools.apply_key_words(title, find)
+    if not is_regex:
+        newlines = "\\n" in pattern
+        pattern = escape(pattern)
+        if newlines:
+            pattern = pattern.replace("\\\\n", "\n")
+    rx = DotNetRegex(pattern, DotNetOptions.NONE if case_sensitive else DotNetOptions.IGNORE_CASE)
+    return [(m.index, m.length) for m in rx.matches(text) if m.length > 0]
+
+
+def next_error(errors: Sequence[tuple[int, int]], position: int) -> tuple[int, int] | None:
+    """A click on the alerts: the first error after position, or the first one (lbAlerts_Click)."""
+    for start, length in errors:
+        if start > position:
+            return start, length
+    return errors[0] if errors else None
+
+
+_DuplicateCount = DotNetRegex(r" \(\d+\)$")
+
+
+def duplicate_link_pattern(entry: str) -> str:
+    """A "Multiple wiki-links" entry ("Target (3)") as the .NET pattern AWB searched with: the
+    link, its first letter in either case, with or without a pipe."""
+    link = _DuplicateCount.replace(entry, "")
+    if not link:
+        return ""
+    return r"\[\[(?i)" + escape(link[0]) + "(?-i)" + escape(link[1:]) + r"(\|.*?)?\]\]"
+
+
+_PipeTrickParens = DotNetRegex(r" *\([^()]*\)$")
+
+
+def delink_selection(selected: str) -> str | None:
+    """Start tab ▸ Delink selection (AWB btnRemove): a selected [[link]] becomes its text.
+    None when the selection is not a link (AWB asks the user to select one). For the pipe trick
+    ([[Help:Foo (bar)|]]) this gives what MediaWiki shows ("Foo"); AWB left a stray ":" or
+    space there, or refused plain [[Foo|]]."""
+    if not (selected.startswith("[[") and selected.endswith("]]")):
+        return None
+    inner = selected[2:-2]
+    if inner.endswith("|"):
+        target = inner[:-1]
+        if ":" in target:
+            target = target[target.index(":") + 1 :]
+        target = _PipeTrickParens.replace(target, "").strip()
+        return target or None
+    if "|" in inner:
+        return inner[inner.index("|") + 1 :]
+    return inner
