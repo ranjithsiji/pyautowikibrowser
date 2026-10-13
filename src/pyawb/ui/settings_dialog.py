@@ -13,10 +13,12 @@ saved in config.toml. The fonts page is also the start screen's font step."""
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import replace
+from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase, QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -32,6 +35,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QRadioButton,
     QSpinBox,
@@ -42,9 +46,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pyawb import paths
 from pyawb.settings import languages
 from pyawb.settings.appconfig import AppConfig
-from pyawb.settings.preferences import SAMPLES, FontChoice, Preferences, suggest_font
+from pyawb.settings.preferences import (
+    SAMPLES,
+    FontChoice,
+    Preferences,
+    font_install_help,
+    suggest_font,
+)
 from pyawb.ui.editor_dialogs import primary_button
 
 DEFAULT_FONT = ""  # combo data for "the system's default"
@@ -63,6 +74,39 @@ def families_for_script(script: str) -> list[str]:
         if all(metrics.inFontUcs4(c) for c in sample):
             out.append(family)
     return sorted(out, key=str.casefold)
+
+
+def user_font_dir() -> Path:
+    """Fonts added with "Add a font file…": loaded by PyAutoWikiBrowser at every start, so a
+    script's font works without installing it in the system (or administrator rights)."""
+    return paths.data_dir() / "fonts"
+
+
+def load_user_fonts() -> list[str]:
+    """Register the fonts in user_font_dir() with Qt; the families they add."""
+    families: list[str] = []
+    folder = user_font_dir()
+    if folder.is_dir():
+        for path in sorted(folder.iterdir()):
+            if path.suffix.lower() in (".ttf", ".otf", ".ttc", ".otc"):
+                font_id = QFontDatabase.addApplicationFont(str(path))
+                if font_id >= 0:
+                    families += QFontDatabase.applicationFontFamilies(font_id)
+    return families
+
+
+def add_font_file(source: Path) -> list[str]:
+    """Copy a font file into user_font_dir() and load it; the families it has ([] if Qt cannot
+    read it, in which case it is not kept)."""
+    folder = user_font_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / source.name
+    shutil.copyfile(source, target)
+    font_id = QFontDatabase.addApplicationFont(str(target))
+    if font_id < 0:
+        target.unlink(missing_ok=True)
+        return []
+    return QFontDatabase.applicationFontFamilies(font_id)
 
 
 class FontsPage(QWidget):
@@ -90,9 +134,38 @@ class FontsPage(QWidget):
         self.editor_size.setSpecialValueText(self.tr("Default size"))
         self.interface_font = QComboBox(self)
         self.diff_font = QComboBox(self)
-        self.warning = QLabel(self)
-        self.warning.setObjectName("error")
+        # why this matters, always shown
+        self.notice = QLabel(
+            self.tr(
+                "Choosing the font is a critical step: the wiki's text is shown and edited in it. "
+                "It must be a Unicode font that has the language's script, with its letters, vowel "
+                "signs and conjuncts. If no such font is installed, install one first; otherwise "
+                "the text shows as boxes or broken letters."
+            ),
+            self,
+        )
+        self.notice.setObjectName("infoNotice")
+        self.notice.setWordWrap(True)
+        # no font with the script: what to install, and how
+        self.missing = QWidget(self)
+        self.missing.setObjectName("warningNotice")
+        self.missing.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+        self.warning = QLabel(self.missing)
         self.warning.setWordWrap(True)
+        self.warning.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.download = QPushButton(self.tr("Download the font"), self.missing)
+        self.download.clicked.connect(self._open_download)
+        self.add_file = QPushButton(self.tr("Add a font file…"), self.missing)
+        self.add_file.clicked.connect(self._add_font_file)
+        self.recheck = QPushButton(self.tr("Check again"), self.missing)
+        self.recheck.clicked.connect(self._fill)
+        missing_buttons = QHBoxLayout()
+        for b in (self.download, self.add_file, self.recheck):
+            missing_buttons.addWidget(b)
+        missing_buttons.addStretch(1)
+        ml = QVBoxLayout(self.missing)
+        ml.addWidget(self.warning)
+        ml.addLayout(missing_buttons)
         self.sample = QLabel(self)
         self.sample.setObjectName("fontSample")
         self.sample.setWordWrap(True)
@@ -112,17 +185,9 @@ class FontsPage(QWidget):
         sl = QVBoxLayout(sample_box)
         sl.addWidget(self.sample)
         layout = QVBoxLayout(self)
-        layout.addWidget(
-            QLabel(
-                self.tr(
-                    "Choose fonts that have the wiki's script: they shape every word in the "
-                    "editor, the diff and the lists."
-                ),
-                self,
-            )
-        )
+        layout.addWidget(self.notice)
+        layout.addWidget(self.missing)
         layout.addLayout(form)
-        layout.addWidget(self.warning)
         layout.addWidget(sample_box)
         layout.addStretch(1)
 
@@ -166,15 +231,29 @@ class FontsPage(QWidget):
             combo.setCurrentIndex(max(combo.findData(value), 0))
             combo.blockSignals(False)
         self.editor_size.setValue(chosen.editor_size)
-        self.warning.setText(
-            ""
-            if self.families
-            else self.tr(
-                "No installed font has the %1 script. Install one (for example a Noto font for "
-                "it), or the text will show as boxes."
-            ).replace("%1", script)
-        )
-        self.warning.setVisible(not self.families)
+        if self.has_fonts():
+            self.missing.hide()
+        else:
+            help_ = font_install_help(script)
+            self.warning.setText(
+                self.tr(
+                    "No installed font has the %1 script, so its text cannot be shown. Install a "
+                    "Unicode font for it first, for example %2:\n"
+                    "• Download it (button below), then add the file here or install it in the "
+                    "system.\n"
+                    "• Linux: %3\n"
+                    "• Windows: %4\n"
+                    "• macOS: %5\n"
+                    "Then press Check again (a font installed in the system may need "
+                    "PyAutoWikiBrowser to be restarted)."
+                )
+                .replace("%1", script)
+                .replace("%2", help_.family)
+                .replace("%3", help_.linux)
+                .replace("%4", help_.windows)
+                .replace("%5", help_.macos)
+            )
+            self.missing.show()
         self._update_sample()
 
     def _update_sample(self) -> None:
@@ -186,6 +265,28 @@ class FontsPage(QWidget):
         font.setPointSizeF(max(font.pointSizeF(), 12))
         self.sample.setFont(font)
         self.sample.setText(text)
+
+    def _open_download(self) -> None:
+        QDesktopServices.openUrl(QUrl(font_install_help(self._current).download_url))
+
+    def _add_font_file(self) -> None:
+        name, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Add a font file"),
+            "",
+            self.tr("Fonts (*.ttf *.otf *.ttc *.otc);;All files (*)"),
+        )
+        if not name:
+            return
+        families = add_font_file(Path(name))
+        if not families:
+            QMessageBox.warning(
+                self, self.tr("Font"), self.tr("This file is not a font Qt can read.")
+            )
+            return
+        self._fill()
+        if self.has_fonts() and families[0] in self.families:
+            self.editor_font.setCurrentIndex(max(self.editor_font.findData(families[0]), 0))
 
     def set_script(self, script: str) -> None:
         self.script.setCurrentIndex(max(self.script.findData(script), 0))

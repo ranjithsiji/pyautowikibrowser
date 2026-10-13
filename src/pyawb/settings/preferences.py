@@ -167,6 +167,7 @@ class Preferences:
 
 # Noto's family names where they are not "Noto Sans <script>"
 _NOTO_NAMES: Mapping[str, tuple[str, ...]] = {
+    # installed names first; the last is the family on Google Fonts
     "SimplifiedChinese": ("Noto Sans CJK SC", "Noto Sans SC"),
     "TraditionalChinese": ("Noto Sans CJK TC", "Noto Sans TC"),
     "Japanese": ("Noto Sans CJK JP", "Noto Sans JP"),
@@ -191,3 +192,42 @@ def suggest_font(script: str, families: Sequence[str]) -> str:
     word = script.casefold()
     named = [f for f in families if word in f.casefold() and "mono" not in f.casefold()]
     return named[0] if named else families[0]
+
+
+# Debian/Ubuntu packages with fonts for scripts often missing from a default install
+_DEBIAN_PACKAGES: Mapping[str, str] = {
+    "Malayalam": "fonts-smc-manjari fonts-noto-core",
+    "Tamil": "fonts-noto-core fonts-taml",
+    "Devanagari": "fonts-noto-core fonts-deva",
+    "Bengali": "fonts-noto-core fonts-beng",
+    "SimplifiedChinese": "fonts-noto-cjk",
+    "TraditionalChinese": "fonts-noto-cjk",
+    "Japanese": "fonts-noto-cjk",
+    "Korean": "fonts-noto-cjk",
+}
+
+
+@dataclass(frozen=True)
+class FontHelp:
+    """How to get a font for a script: the Noto family to look for and where to download it."""
+
+    family: str
+    download_url: str
+    linux: str
+    windows: str
+    macos: str
+
+
+def font_install_help(script: str) -> FontHelp:
+    """Install advice for a script's font (Google's Noto family covers every script)."""
+    family = (_NOTO_NAMES.get(script) or (f"Noto Sans {script}",))[-1]
+    url = "https://fonts.google.com/noto/specimen/" + family.replace(" ", "+")
+    package = _DEBIAN_PACKAGES.get(script, "fonts-noto-core fonts-noto-extra")
+    return FontHelp(
+        family=family,
+        download_url=url,
+        linux=f"sudo apt install {package}   (Fedora: sudo dnf install google-noto-sans-fonts)",
+        windows="Settings → Time & language → Language & region → add the language, or "
+        "Settings → Personalization → Fonts → install the downloaded font",
+        macos="Font Book → File → Add Fonts… with the downloaded font",
+    )

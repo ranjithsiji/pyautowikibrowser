@@ -117,3 +117,14 @@ def test_suggest_font() -> None:
     assert suggest_font("Tamil", ["Lohit Tamil", "Latha"]) == "Lohit Tamil"
     assert suggest_font("Latin", ["DejaVu Sans"]) == ""
     assert suggest_font("Malayalam", []) == ""
+
+
+def test_font_install_help() -> None:
+    from pyawb.settings.preferences import font_install_help
+
+    ml = font_install_help("Malayalam")
+    assert ml.family == "Noto Sans Malayalam"
+    assert ml.download_url == "https://fonts.google.com/noto/specimen/Noto+Sans+Malayalam"
+    assert "apt install" in ml.linux
+    assert font_install_help("Japanese").family == "Noto Sans JP"
+    assert font_install_help("Arabic").family == "Noto Sans Arabic"

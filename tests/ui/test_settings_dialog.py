@@ -120,3 +120,46 @@ def test_menu_applies_and_saves(qtbot: QtBot, monkeypatch: object) -> None:
     assert w.editor.font().pointSize() == 17
     assert w.editor.lineWrapMode() == w.editor.LineWrapMode.NoWrap
     assert appconfig.load().preferences == chosen
+
+
+def test_add_a_font_file(qtbot: QtBot, tmp_path: object) -> None:
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    from pyawb.ui.settings_dialog import add_font_file, load_user_fonts, user_font_dir
+
+    found = subprocess.run(["fc-list", ":", "file"], capture_output=True, text=True).stdout
+    fonts = [
+        line.rstrip(": ").strip() for line in found.splitlines() if line.strip().endswith(".ttf:")
+    ]
+    if not fonts:
+        pytest.skip("no TrueType font on this system to test with")
+    families = add_font_file(Path(fonts[0]))
+    assert families and (user_font_dir() / Path(fonts[0]).name).exists()
+    assert set(families) <= set(load_user_fonts())
+
+    not_a_font = Path(str(tmp_path)) / "notes.ttf"
+    not_a_font.write_text("not a font")
+    assert add_font_file(not_a_font) == [] and not (user_font_dir() / "notes.ttf").exists()
+
+
+def test_missing_font_says_how_to_install(qtbot: QtBot, monkeypatch: object) -> None:
+    import pytest
+
+    from pyawb.ui import settings_dialog
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(settings_dialog, "families_for_script", lambda script: [])
+    try:
+        d = dialog(qtbot, page="fonts")
+        page = d.fonts
+        assert page.notice.text().startswith("Choosing the font is a critical step")
+        assert page.missing.isVisibleTo(page)
+        text = page.warning.text()
+        assert "Noto Sans Malayalam" in text and "apt install" in text and "Font Book" in text
+    finally:
+        mp.undo()
+    page._fill()  # pyright: ignore[reportPrivateUsage]  # fonts found again
+    assert not page.missing.isVisibleTo(page) or not page.has_fonts()

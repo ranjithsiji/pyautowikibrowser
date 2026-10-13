@@ -23,6 +23,7 @@ from pyawb import __version__
 from pyawb.settings import appconfig
 from pyawb.ui import theme
 from pyawb.ui.main_window import MainWindow
+from pyawb.ui.settings_dialog import load_user_fonts
 from pyawb.ui.start_screen import StartScreen
 
 
@@ -65,6 +66,7 @@ def run(argv: list[str]) -> int:
     app.setApplicationName("PyAutoWikiBrowser")
     app.setApplicationVersion(__version__)
     theme.apply(app)
+    load_user_fonts()  # fonts added in Settings → Fonts ("Add a font file…")
     try:
         config = appconfig.load()
     except (appconfig.ConfigError, OSError):

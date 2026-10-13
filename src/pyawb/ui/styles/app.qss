@@ -212,6 +212,20 @@ QStatusBar {
 QLabel#userLabel { padding: 1px 8px; color: $color_inverted_fixed; background: $background_color_destructive; }
 QLabel#userLabel[loggedIn="true"] { background: $color_success; }
 QLabel#positionLabel { padding: 0 8px; font-weight: bold; }
+/* notices (Codex Message): information, and a warning with what to do */
+QLabel#infoNotice {
+    background: $background_color_progressive_subtle;
+    border: $border_width_base solid $border_color_progressive;
+    border-radius: $border_radius_base;
+    padding: 8px 12px;
+    color: $color_base;
+}
+QWidget#warningNotice {
+    background: $background_color_warning_subtle;
+    border: $border_width_base solid $border_color_warning;
+    border-radius: $border_radius_base;
+}
+QWidget#warningNotice QLabel { color: $color_base; }
 /* the start screen: the step line and each step's heading */
 QLabel#startSteps { padding: 4px 0 8px 0; color: $color_subtle; }
 QLabel#startHeading { font-size: 16pt; font-weight: bold; color: $color_emphasized; padding: 4px 0; }
