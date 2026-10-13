@@ -229,8 +229,11 @@ Run tests and pyright before calling any task done.
    plus a manual list and a Wikidata SPARQL query mapped to this wiki's pages through sitelinks), Edit/Diff
    tabs (diff from `action=compare`), options and skip panel, Start/Save/Skip/Stop/Show changes/Preview
    (preview opens in the browser); the work runs in `editloop.EditLoop` off the UI thread (`ui/tasks.py`).
-   Next: find & replace and typo-fixing UI (the typo list page per wiki), append/prepend, categories and
-   files options, bot mode with the save delay, logging tab, the native word-level diff (wikidiff2 port).
+   Find & replace table (`ui/find_replace_dialog.py`, rows as `rules.findreplace.ReplacementRow`), typo
+   fixing with the wiki's list (`api/typolist.py`: Config `typolink` or Project:AutoWikiBrowser/Typos,
+   English Wikipedia's list offered when there is none), More tab (append/prepend, categories, files).
+   Next: bot mode with the save delay, logging tab, the native word-level diff (wikidiff2 port); find &
+   replace rules and options are kept only for the session until settings files (step 6).
    UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.

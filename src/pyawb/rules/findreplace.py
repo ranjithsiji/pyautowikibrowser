@@ -256,3 +256,64 @@ class FindAndReplace:
             self.removed_summary += f" ({rem_count})"
 
         return res, rep_count + rem_count > 0
+
+
+@dataclass(frozen=True)
+class ReplacementRow:
+    """One row of the find and replace table as the user typed it (the form's grid columns).
+    to_replacement() makes the engine's rule (AWB's RowToReplacement)."""
+
+    find: str = ""
+    replace: str = ""
+    case_sensitive: bool = False
+    is_regex: bool = False
+    multiline: bool = False
+    singleline: bool = False
+    minor: bool = False
+    after_fixes: bool = False
+    enabled: bool = True
+    comment: str = ""
+
+    def to_replacement(self) -> Replacement:
+        return Replacement.from_row(
+            self.find,
+            self.replace,
+            case_sensitive=self.case_sensitive,
+            is_regex=self.is_regex,
+            multiline=self.multiline,
+            singleline=self.singleline,
+            minor=self.minor,
+            before_or_after=self.after_fixes,
+            enabled=self.enabled,
+            comment=self.comment,
+        )
+
+
+def row_error(row: ReplacementRow, sample_title: str = "Example") -> str | None:
+    """Why the row's find pattern cannot be used (None if it can). %%keywords%% are expanded
+    with sample_title first, as they will be for each page."""
+    if not row.find:
+        return None
+    rep = row.to_replacement()
+    try:
+        DotNetRegex(tools.apply_key_words(sample_title, rep.find, True), rep.options)
+    except Exception as e:  # regex.error, UnsupportedPatternError
+        return str(e)
+    return None
+
+
+def find_and_replace_from_rows(
+    rows: Iterable[ReplacementRow],
+    *,
+    ignore_links: bool = False,
+    ignore_more: bool = False,
+    add_to_summary: bool = True,
+) -> FindAndReplace:
+    """The engine for the table's rows; rows without a find pattern are left out (AWB's
+    MakeList skips empty rows)."""
+    return FindAndReplace(
+        [r.to_replacement() for r in rows if r.find],
+        ignore_links=ignore_links,
+        ignore_more=ignore_more,
+        add_to_summary=add_to_summary,
+    )

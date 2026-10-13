@@ -106,3 +106,52 @@ def test_manual_list(qtbot: QtBot) -> None:
     lm.line.setText("Cats")
     lm.make_list()
     assert len(lm.articles) == 3 and "connect" in w.status_label.text()
+
+
+def test_find_and_replace_and_append(qtbot: QtBot) -> None:
+    from pyawb.rules.findreplace import ReplacementRow
+    from pyawb.ui.find_replace_dialog import FindReplaceSettings
+
+    w, _ = window(qtbot, {"قط": "حيوان [[أليف]] صغير."})
+    w.options.set_find_replace(FindReplaceSettings((ReplacementRow("صغير", "كبير"),)))
+    assert w.options.find_replace.isChecked()
+    w.options.append.setChecked(True)
+    w.options.append_text.setPlainText("{{بذرة}}")
+    w.options.append_newlines.setValue(1)
+    w.start()
+    qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
+    assert w.editor.toPlainText() == "حيوان [[أليف]] كبير.\n{{بذرة}}"
+    assert "استبدل: صغير ← كبير" in w.review_summary.currentText()
+
+
+def test_typo_list_is_loaded_and_used(qtbot: QtBot) -> None:
+    w, t = window(qtbot, {"قط": "هذا قطه صغير."})
+    t.pages["ويكيبيديا:AutoWikiBrowser/Typos"] = (
+        '<Typo word="قطة" find="\\bقطه\\b" replace="قطة" />'
+    )
+    w.options.fix_typos.setChecked(True)
+    qtbot.waitUntil(lambda: w.typos is not None, timeout=5000)
+    assert "1 typos loaded" in w.options.typo_status.text()
+    w.start()
+    qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
+    assert w.editor.toPlainText() == "هذا قطة صغير."
+    assert "قطه" in w.review_summary.currentText()
+
+
+def test_start_waits_for_the_typo_list(qtbot: QtBot) -> None:
+    w, t = window(qtbot, {"قط": "هذا قطه صغير."})
+    t.pages["ويكيبيديا:AutoWikiBrowser/Typos"] = '<Typo find="\\bقطه\\b" replace="قطة" />'
+    w.options.fix_typos.blockSignals(True)
+    w.options.fix_typos.setChecked(True)
+    w.options.fix_typos.blockSignals(False)
+    w.start()  # loads the list, then starts
+    qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
+    assert w.editor.toPlainText() == "هذا قطة صغير."
+
+
+def test_missing_typo_list(qtbot: QtBot, message_boxes: list[tuple[str, str]]) -> None:
+    w, _ = window(qtbot, {"قط": "x"})
+    w.options.fix_typos.setChecked(True)
+    qtbot.waitUntil(lambda: not w.typos_loading, timeout=5000)
+    assert message_boxes and message_boxes[-1][0] == "question"  # English list? -> No
+    assert not w.options.fix_typos.isChecked() and w.typos is None

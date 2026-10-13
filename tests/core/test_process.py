@@ -124,3 +124,15 @@ def test_summary_tag() -> None:
     assert process.append_summary_tag("fix", site, suppress=True) == "fix" + site.summary_tag
     custom = replace(site, project="custom")
     assert process.append_summary_tag("fix", custom) == "fix"
+
+
+def test_clean_category_input() -> None:
+    assert process.clean_category_input("[[Category:foo bar]]") == "Foo bar"
+    assert process.clean_category_input("category: x") == "X"
+    assert process.clean_category_input("Foo") == "Foo"
+
+
+def test_clean_file_input() -> None:
+    assert process.clean_file_input("File:A.jpg") == "A.jpg"
+    assert process.clean_file_input("file:B.png") == "B.png"
+    assert process.clean_file_input("Image:C.png") == "Image:C.png"  # as AWB: the wiki's name only

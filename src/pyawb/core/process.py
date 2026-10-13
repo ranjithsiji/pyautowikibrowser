@@ -25,7 +25,7 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from pyawb.core import namespace, tools
+from pyawb.core import namespace, rx, tools
 from pyawb.core import summary as _summary
 from pyawb.core import wikiregexes as W
 from pyawb.core.article import (
@@ -41,8 +41,9 @@ from pyawb.core.parsers import parsers as _parsers
 from pyawb.core.parsers.categorydefaultsort import fix_categories
 from pyawb.core.parsers.hidetext import HideText
 from pyawb.core.parsers.parsers import Parsers
-from pyawb.core.rx import DotNetRegex
-from pyawb.core.site import SiteConfig, current_site
+from pyawb.core.rx import DotNetOptions, DotNetRegex
+from pyawb.core.site import Namespace, SiteConfig, current_site
+from pyawb.core.textutil import turn_first_to_upper
 
 UNICODE_PUA = DotNetRegex(r"\p{IsPrivateUse}")
 
@@ -335,3 +336,21 @@ def append_summary_tag(
     if not (is_bot and suppress) and site.is_wikimedia_project:
         return _summary.trim(summary, site.summary_tag) + site.summary_tag
     return summary
+
+
+def clean_category_input(text: str, site: SiteConfig | None = None) -> str:
+    """MainForm.CategoryLeave: a category typed as [[Category:Foo]] or Category:foo -> "Foo"
+    (any spelling of the namespace, as the wiki's case-insensitive namespace pattern)."""
+    site = site or current_site()
+    text = text.strip("[]")
+    pattern = site.namespaces_case_insensitive[Namespace.CATEGORY]
+    text = DotNetRegex("^" + pattern).replace(text, "")
+    return turn_first_to_upper(text.strip())
+
+
+def clean_file_input(text: str, site: SiteConfig | None = None) -> str:
+    """MainForm.txtImageReplace_Leave: drop a leading File: (the wiki's name, any case)."""
+    site = site or current_site()
+    return DotNetRegex(
+        "^" + rx.escape(site.namespaces[Namespace.FILE]), DotNetOptions.IGNORE_CASE
+    ).replace(text, "")

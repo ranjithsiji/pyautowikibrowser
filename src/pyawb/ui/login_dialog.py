@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from pyawb.settings.appconfig import AppConfig, Profile
+from pyawb.ui.editor_dialogs import primary_button
 
 PROJECTS = (
     "wikipedia",
@@ -103,7 +104,7 @@ class LoginDialog(QDialog):
         )
         ok = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
         ok.setText(self.tr("Log in"))
-        ok.setProperty("primary", True)
+        primary_button(ok)
         self.buttons.accepted.connect(self._accept)
         self.buttons.rejected.connect(self.reject)
 

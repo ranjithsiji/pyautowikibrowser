@@ -128,3 +128,9 @@ def test_new_messages_stop_the_loop() -> None:
 
 def test_invalid_title() -> None:
     assert EditLoop(approved_session()[0]).load("قط[1]", opts()).skip_reason == "Invalid page title"
+
+
+def test_clean_inputs_use_the_wikis_namespaces() -> None:
+    session = approved_session()[0]
+    assert process.clean_category_input("[[تصنيف:قطط]]", session.site) == "قطط"
+    assert process.clean_file_input("ملف:قط.jpg", session.site) == "قط.jpg"

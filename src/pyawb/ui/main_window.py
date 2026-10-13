@@ -46,16 +46,19 @@ from pyawb.api import connect, credentials
 from pyawb.api.models import WatchOptions
 from pyawb.api.session import WikiSession
 from pyawb.api.sparql import PywikibotSparql
+from pyawb.api.typolist import fetch_english_typo_list, fetch_typo_list
 from pyawb.core import tools
 from pyawb.core.article import Article
-from pyawb.core.site import SiteConfig, current_site
-from pyawb.editloop import EditLoop, LoadResult
+from pyawb.core.site import SiteConfig, current_site, use_site
+from pyawb.editloop import EditLoop, LoadResult, LoopOptions
 from pyawb.editor import mwconfig
 from pyawb.editor.diffhtml import DiffColors, qt_diff_html
 from pyawb.editor.messages import Messages
 from pyawb.editor.mwconfig import MwConfig, default_config
 from pyawb.editor.toolbar import ToolbarSite, build_toolbar
 from pyawb.lists.sources import WikiContext
+from pyawb.rules import typos
+from pyawb.rules.typos import RegExTypoFix
 from pyawb.settings import appconfig
 from pyawb.ui import theme
 from pyawb.ui.editor_dialogs import DIALOGS, EditorDialogs, Suggest
@@ -135,6 +138,9 @@ class MainWindow(QMainWindow):
         self.running = False  # Start pressed and not stopped
         self.busy = False  # a background step is running
         self.edits = self.skips = 0
+        self.typos: RegExTypoFix | None = None  # the wiki's typo list, loaded on first use
+        self.typos_loading = False
+        self.opts: LoopOptions | None = None  # the options the current page was processed with
 
         # editor (Edit tab)
         edit_tab = QWidget(self)
@@ -170,6 +176,7 @@ class MainWindow(QMainWindow):
 
         # options, summary, buttons
         self.options = OptionsPanel(self)
+        self.options.typos_toggled.connect(self._typos_toggled)
         self.summary = QComboBox(self)
         self.summary.setEditable(True)
         self.summary.setObjectName("summary")
@@ -405,6 +412,10 @@ class MainWindow(QMainWindow):
         else:
             self.set_text_direction(site.rtl)
         self.list_maker.set_wiki(wiki, site)
+        self.options.set_site(site)
+        self.typos = None
+        if self.options.fix_typos.isChecked():
+            self.load_typos()
         self.wiki_label.setText(f"{session.user.name} @ {site.url}")
         status = session.status
         if session.can_save:
@@ -435,6 +446,8 @@ class MainWindow(QMainWindow):
             session = self.session
             run_task(session.logout, lambda _: None, lambda _: None)
         self.session = self.loop = None
+        self.typos = None
+        self.options.typo_status.setText(self.tr("Not loaded"))
         self.wiki_label.clear()
         self.list_maker.set_wiki(None, current_site())
         self.set_status(self.tr("Not logged in"))
@@ -452,6 +465,11 @@ class MainWindow(QMainWindow):
             )
             self.stop()
             return
+        if self.options.fix_typos.isChecked() and self.typos is None:
+            # AWB loads the list before the first page; start again once it is there
+            if not self.typos_loading:
+                self.load_typos(start_after=True)
+            return
         try:
             status = self.session.status
             config = status.config if status else None
@@ -460,6 +478,7 @@ class MainWindow(QMainWindow):
                 self.session.user.name,
                 frozenset(config.no_genfixes) if config else frozenset(),
                 frozenset(config.no_regex_typo_fix) if config else frozenset(),
+                self.typos,
             )
         except OptionsError as e:
             QMessageBox.warning(self, self.tr("Skip options"), str(e))
@@ -474,8 +493,102 @@ class MainWindow(QMainWindow):
         self.running = True
         self._clear_page()
         loop, title = self.loop, article.name
+        self.opts = opts
         self._set_busy(True, self.tr("Loading %1…").replace("%1", title))
         run_task(lambda: loop.load(title, opts), self._loaded, self._step_failed)
+
+    def _report_timeouts(self) -> None:
+        """Rules that ran out of time on this page were skipped (rule 2): say which."""
+        p = self.opts.process if self.opts else None
+        slow: list[str] = []
+        if p is not None and p.find_and_replace is not None:
+            far = p.find_and_replace
+            slow += [r.find for r in getattr(far, "timed_out", ())]
+        if p is not None and isinstance(p.typos, RegExTypoFix):
+            slow += p.typos.timed_out
+        if slow:
+            self.set_status(
+                self.tr("Rules skipped (too slow): %1").replace("%1", ", ".join(slow[:5]))
+            )
+
+    # -- typo fixing --------------------------------------------------------------------------
+
+    def _typos_toggled(self, on: bool) -> None:
+        if on and self.typos is None and not self.typos_loading and self.session is not None:
+            self.load_typos()
+
+    def load_typos(self, english: bool = False, start_after: bool = False) -> None:
+        """Load the wiki's typo list (or English Wikipedia's) in the background."""
+        session = self.session
+        if session is None:
+            return
+        cfg = self.config
+        link = session.status.config.typo_link if session.status else ""
+
+        def work() -> tuple[str, RegExTypoFix | None]:
+            with use_site(session.site):
+                if english:
+                    where, text = (
+                        "en: Wikipedia:AutoWikiBrowser/Typos",
+                        fetch_english_typo_list(session),
+                    )
+                else:
+                    loc, text = fetch_typo_list(
+                        session,
+                        link,
+                        lambda lang, project: connect.wiki_transport(cfg, lang, project),
+                    )
+                    where = loc.title
+                if not text.strip():
+                    return where, None
+                return where, RegExTypoFix(typos.parse(text))
+
+        def done(result: object) -> None:
+            self.typos_loading = False
+            if session is not self.session:
+                return  # logged in elsewhere meanwhile
+            where, fixer = result  # type: ignore[misc]
+            assert isinstance(where, str)
+            if fixer is None:
+                answer = QMessageBox.question(
+                    self,
+                    self.tr("Typo list"),
+                    self.tr(
+                        "No list of typos was found at %1. Would you like to use the list of "
+                        "typos from the English Wikipedia? Only choose Yes if this is an English "
+                        "wiki."
+                    ).replace("%1", where),
+                )
+                if answer == QMessageBox.StandardButton.Yes and not english:
+                    self.load_typos(english=True, start_after=start_after)
+                else:
+                    self._typos_unavailable(self.tr("No typo list"))
+                return
+            assert isinstance(fixer, RegExTypoFix)
+            if not fixer.typos_loaded:
+                self._typos_unavailable(fixer.error or self.tr("The typo list has no rules"))
+                return
+            self.typos = fixer
+            self.options.typo_status.setText(
+                self.tr("%1 typos loaded from %2")
+                .replace("%1", str(fixer.typo_count))
+                .replace("%2", where)
+            )
+            if start_after:
+                self.start()
+
+        def failed(error: Exception) -> None:
+            self.typos_loading = False
+            if session is self.session:
+                self._typos_unavailable(str(error) or type(error).__name__)
+
+        self.typos_loading = True
+        self.options.typo_status.setText(self.tr("Loading the typo list…"))
+        run_task(work, done, failed)
+
+    def _typos_unavailable(self, why: str) -> None:
+        self.options.typo_status.setText(self.tr("Not loaded: %1").replace("%1", why))
+        self.options.fix_typos.setChecked(False)
 
     def _remember_summary(self) -> None:
         text = self.summary.currentText().strip()
@@ -501,6 +614,7 @@ class MainWindow(QMainWindow):
                     .replace("%1", result.title)
                     .replace("%2", result.page.title)
                 )
+        self._report_timeouts()
         if result.skipped:
             self.current = result
             self.skip_page(result.skip_reason or "")

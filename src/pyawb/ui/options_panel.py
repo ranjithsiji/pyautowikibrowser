@@ -12,20 +12,50 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
+    QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from pyawb.core.process import ContainsCheck, ProcessOptions
+from pyawb.core.article import CategorisationOptions, ImageReplaceOptions, TypoFixer
+from pyawb.core.process import (
+    ContainsCheck,
+    ProcessOptions,
+    clean_category_input,
+    clean_file_input,
+)
+from pyawb.core.site import SiteConfig, current_site
 from pyawb.editloop import LoopOptions
+from pyawb.rules.findreplace import find_and_replace_from_rows
 from pyawb.rules.skip import create_comparer
+from pyawb.ui.find_replace_dialog import FindReplaceDialog, FindReplaceSettings
+
+# AWB's combo box items, in its order (the enum values)
+CATEGORY_ACTIONS = (
+    ("Categories: no change", CategorisationOptions.NO_ACTION),
+    ("Replace category", CategorisationOptions.RE_CAT),
+    ("Add category", CategorisationOptions.ADD_CAT),
+    ("Remove category", CategorisationOptions.REMOVE_CAT),
+)
+FILE_ACTIONS = (
+    ("Files: no change", ImageReplaceOptions.NO_ACTION),
+    ("Replace file", ImageReplaceOptions.REPLACE),
+    ("Remove file", ImageReplaceOptions.REMOVE),
+    ("Comment out file", ImageReplaceOptions.COMMENT),
+)
 
 
 class OptionsError(ValueError):
@@ -62,11 +92,20 @@ class _ContainsRow(QWidget):
 
 
 class OptionsPanel(QTabWidget):
+    typos_toggled = Signal(bool)  # "Fix typos" switched: the list is loaded on first use
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("optionsPanel")
+        self.far_settings = FindReplaceSettings()
+        self.site: SiteConfig = current_site()
+        self._make_options_tab()
+        self._make_more_tab()
+        self._make_skip_tab()
 
-        # Options tab
+    # -- tabs ---------------------------------------------------------------------------------
+
+    def _make_options_tab(self) -> None:
         options = QWidget(self)
         self.general_fixes = QCheckBox(self.tr("Apply general fixes"), options)
         self.general_fixes.setChecked(True)
@@ -78,22 +117,124 @@ class OptionsPanel(QTabWidget):
         self.section_summary = QCheckBox(self.tr("Section edit summaries"), options)
         self.section_summary.setChecked(True)
         self.ignore_nobots = QCheckBox(self.tr("Ignore {{bots}} and {{nobots}}"), options)
-        grid = QGridLayout(options)
-        for i, w in enumerate(
-            (
-                self.general_fixes,
-                self.auto_tag,
-                self.unicodify,
-                self.follow_redirects,
-                self.section_summary,
-                self.ignore_nobots,
-            )
+        general = QVBoxLayout()
+        for w in (
+            self.general_fixes,
+            self.auto_tag,
+            self.unicodify,
+            self.follow_redirects,
+            self.section_summary,
+            self.ignore_nobots,
         ):
-            grid.addWidget(w, i % 3, i // 3)
-        grid.setRowStretch(3, 1)
-        self.addTab(options, self.tr("Options"))
+            general.addWidget(w)
+        general.addStretch(1)
 
-        # Skip tab
+        far = QGroupBox(self.tr("Find and replace"), options)
+        self.find_replace = QCheckBox(self.tr("Find and replace"), far)
+        self.far_rules = QPushButton(self.tr("Rules…"), far)
+        self.far_rules.clicked.connect(self.edit_find_replace)
+        self.far_count = QLabel(far)
+        self.skip_no_far = QCheckBox(self.tr("Skip if no replacement"), far)
+        self.skip_minor_far = QCheckBox(self.tr("Skip if only minor replacements"), far)
+        fl = QGridLayout(far)
+        fl.addWidget(self.find_replace, 0, 0)
+        fl.addWidget(self.far_rules, 0, 1)
+        fl.addWidget(self.far_count, 1, 0, 1, 2)
+        fl.addWidget(self.skip_no_far, 2, 0, 1, 2)
+        fl.addWidget(self.skip_minor_far, 3, 0, 1, 2)
+        fl.setRowStretch(4, 1)
+
+        typos = QGroupBox(self.tr("Typo fixing"), options)
+        self.fix_typos = QCheckBox(self.tr("Fix typos (RegExTypoFix)"), typos)
+        self.fix_typos.toggled.connect(self.typos_toggled)
+        self.typo_status = QLabel(self.tr("Not loaded"), typos)
+        self.typo_status.setWordWrap(True)
+        self.skip_no_typo = QCheckBox(self.tr("Skip if no typo fixed"), typos)
+        tl = QVBoxLayout(typos)
+        for w in (self.fix_typos, self.typo_status, self.skip_no_typo):
+            tl.addWidget(w)
+        tl.addStretch(1)
+
+        row = QHBoxLayout(options)
+        row.addLayout(general, 1)
+        row.addWidget(far, 1)
+        row.addWidget(typos, 1)
+        self.addTab(options, self.tr("Options"))
+        self._update_far_count()
+
+    def _make_more_tab(self) -> None:
+        more = QWidget(self)
+        append = QGroupBox(self.tr("Append or prepend text"), more)
+        self.append = QCheckBox(self.tr("Enabled"), append)
+        self.append_where = QComboBox(append)
+        self.append_where.addItem(self.tr("Append"), False)
+        self.append_where.addItem(self.tr("Prepend"), True)
+        self.append_text = QPlainTextEdit(append)
+        self.append_text.setPlaceholderText(self.tr("Text (%%title%% and other keywords work)"))
+        self.append_newlines = QSpinBox(append)
+        self.append_newlines.setRange(0, 10)
+        self.append_newlines.setValue(2)
+        self.append_newlines.setPrefix(self.tr("Newlines: "))
+        self.append_sort = QCheckBox(self.tr("Sort metadata after"), append)
+        al = QGridLayout(append)
+        al.addWidget(self.append, 0, 0)
+        al.addWidget(self.append_where, 0, 1)
+        al.addWidget(self.append_newlines, 0, 2)
+        al.addWidget(self.append_sort, 0, 3)
+        al.addWidget(self.append_text, 1, 0, 1, 4)
+
+        cats = QGroupBox(self.tr("Categories"), more)
+        self.category_action = QComboBox(cats)
+        for label, value in CATEGORY_ACTIONS:
+            self.category_action.addItem(self.tr(label), value)
+        self.category = QLineEdit(cats)
+        self.category.setPlaceholderText(self.tr("Category (without the namespace)"))
+        self.category2 = QLineEdit(cats)
+        self.category2.setPlaceholderText(self.tr("New category (replace)"))
+        self.remove_sort_key = QCheckBox(self.tr("Remove sort key"), cats)
+        self.skip_no_cat_change = QCheckBox(self.tr("Skip if no change"), cats)
+        cl = QFormLayout(cats)
+        cl.addRow(self.category_action)
+        cl.addRow(self.category)
+        cl.addRow(self.category2)
+        cl.addRow(self.remove_sort_key)
+        cl.addRow(self.skip_no_cat_change)
+
+        files = QGroupBox(self.tr("Files"), more)
+        self.file_action = QComboBox(files)
+        for label, value in FILE_ACTIONS:
+            self.file_action.addItem(self.tr(label), value)
+        self.file_replace = QLineEdit(files)
+        self.file_replace.setPlaceholderText(self.tr("File (without the namespace)"))
+        self.file_with = QLineEdit(files)
+        self.file_with.setPlaceholderText(self.tr("With (replace) or comment"))
+        self.skip_no_file_change = QCheckBox(self.tr("Skip if no change"), files)
+        il = QFormLayout(files)
+        il.addRow(self.file_action)
+        il.addRow(self.file_replace)
+        il.addRow(self.file_with)
+        il.addRow(self.skip_no_file_change)
+
+        row = QHBoxLayout(more)
+        row.addWidget(append, 2)
+        row.addWidget(cats, 1)
+        row.addWidget(files, 1)
+        self.addTab(more, self.tr("More"))
+
+        for edit in (self.category, self.category2):
+            edit.editingFinished.connect(
+                lambda e=edit: e.setText(clean_category_input(e.text(), self.site))
+            )
+        for edit in (self.file_replace, self.file_with):
+            edit.editingFinished.connect(
+                lambda e=edit: e.setText(clean_file_input(e.text(), self.site))
+            )
+        self.category_action.currentIndexChanged.connect(self._update_more)
+        self.file_action.currentIndexChanged.connect(self._update_more)
+        self.append.toggled.connect(self._update_more)
+        self._update_more()
+
+    def _make_skip_tab(self) -> None:
         skip = QWidget(self)
         box = QGroupBox(self.tr("Skip the page if"), skip)
         self.skip_no_changes = QCheckBox(self.tr("No changes are made"), box)
@@ -140,22 +281,93 @@ class OptionsPanel(QTabWidget):
             lambda on: on and self.skip_non_existent.setChecked(False)
         )
 
+    def set_site(self, site: SiteConfig) -> None:
+        """The connected wiki (its namespaces for the category and file fields)."""
+        self.site = site
+
+    # -- find and replace, more ---------------------------------------------------------------
+
+    def edit_find_replace(self) -> None:
+        dialog = FindReplaceDialog(self.far_settings, self)
+        if dialog.exec():
+            self.set_find_replace(dialog.settings())
+
+    def set_find_replace(self, settings: FindReplaceSettings) -> None:
+        self.far_settings = settings
+        if settings.rows and not self.find_replace.isChecked():
+            self.find_replace.setChecked(True)
+        self._update_far_count()
+
+    def _update_far_count(self) -> None:
+        enabled = sum(1 for r in self.far_settings.rows if r.enabled)
+        self.far_count.setText(
+            self.tr("%1 rules, %2 enabled")
+            .replace("%1", str(len(self.far_settings.rows)))
+            .replace("%2", str(enabled))
+        )
+
+    def _update_more(self) -> None:
+        cat = self.category_action.currentData()
+        for w in (self.category, self.remove_sort_key, self.skip_no_cat_change):
+            w.setEnabled(cat != CategorisationOptions.NO_ACTION)
+        self.category2.setEnabled(cat == CategorisationOptions.RE_CAT)
+        file = self.file_action.currentData()
+        for w in (self.file_replace, self.skip_no_file_change):
+            w.setEnabled(file != ImageReplaceOptions.NO_ACTION)
+        self.file_with.setEnabled(
+            file in (ImageReplaceOptions.REPLACE, ImageReplaceOptions.COMMENT)
+        )
+        on = self.append.isChecked()
+        for w in (self.append_where, self.append_text, self.append_newlines, self.append_sort):
+            w.setEnabled(on)
+
+    # -- the options --------------------------------------------------------------------------
+
     def loop_options(
         self,
         summary: str,
         user_name: str,
         no_parse: frozenset[str] = frozenset(),
         no_retf: frozenset[str] = frozenset(),
+        typos: TypoFixer | None = None,
     ) -> LoopOptions:
-        """The options as set (raises OptionsError for an unusable skip pattern)."""
+        """The options as set (raises OptionsError for an unusable skip pattern). typos: the
+        loaded typo list, used when "Fix typos" is on."""
+        far = None
+        if self.find_replace.isChecked() and self.far_settings.rows:
+            s = self.far_settings
+            far = find_and_replace_from_rows(
+                s.rows,
+                ignore_links=s.ignore_links,
+                ignore_more=s.ignore_more,
+                add_to_summary=s.add_to_summary,
+            )
         p = ProcessOptions(
             user_name=user_name,
             ignore_no_bots=self.ignore_nobots.isChecked(),
             no_parse=no_parse,
             no_retf=no_retf,
             unicodify_whole=self.unicodify.isChecked(),
+            find_and_replace=far,
+            skip_when_no_far=self.skip_no_far.isChecked(),
+            skip_only_minor_far=self.skip_minor_far.isChecked(),
+            categorise=self.category_action.currentData(),
+            category=self.category.text(),
+            category2=self.category2.text(),
+            remove_sort_key=self.remove_sort_key.isChecked(),
+            skip_no_cat_change=self.skip_no_cat_change.isChecked(),
             general_fixes=self.general_fixes.isChecked(),
             auto_tag=self.auto_tag.isChecked(),
+            typos=typos if self.fix_typos.isChecked() else None,
+            skip_if_no_typo=self.skip_no_typo.isChecked(),
+            append_text=self.append_text.toPlainText() if self.append.isChecked() else "",
+            prepend=bool(self.append_where.currentData()),
+            append_newlines=self.append_newlines.value(),
+            append_sort_metadata=self.append_sort.isChecked(),
+            images=self.file_action.currentData(),
+            image_replace=self.file_replace.text(),
+            image_with=self.file_with.text(),
+            skip_no_image_change=self.skip_no_file_change.isChecked(),
             skip_no_changes=self.skip_no_changes.isChecked(),
             skip_whitespace_only=self.skip_whitespace.isChecked(),
             skip_casing_only=self.skip_casing.isChecked(),

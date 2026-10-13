@@ -125,18 +125,19 @@ QToolButton[autoRaise="true"]:disabled {
 }
 
 /* Checkbox and Radio */
-QCheckBox::indicator, QRadioButton::indicator {
+QCheckBox::indicator, QRadioButton::indicator, QTableView::indicator, QListView::indicator {
     width: 18px;
     height: 18px;
     border: $border_width_base solid $border_color_interactive;
     background: $background_color_base;
 }
-QCheckBox::indicator { border-radius: $border_radius_base; }
+QCheckBox::indicator, QTableView::indicator, QListView::indicator { border-radius: $border_radius_base; }
 QRadioButton::indicator { border-radius: 10px; }
-QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+QCheckBox::indicator:hover, QRadioButton::indicator:hover, QTableView::indicator:hover,
+QListView::indicator:hover {
     border-color: $border_color_interactive__hover;
 }
-QCheckBox::indicator:checked {
+QCheckBox::indicator:checked, QTableView::indicator:checked, QListView::indicator:checked {
     background: $background_color_input_binary__checked;
     border-color: $background_color_input_binary__checked;
     image: url($icon_check);

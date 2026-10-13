@@ -56,7 +56,7 @@ Suggest = Callable[[str], Mapping[str, Any]]
 DIALOGS = frozenset({"insert-link", "insert-file", "insert-table", "search-and-replace"})
 
 
-def _primary(button: QPushButton | None) -> None:
+def primary_button(button: QPushButton | None) -> None:
     """Codex's primary progressive button (the dialog's main action, also on Enter)."""
     if button is not None:
         button.setProperty("primary", True)
@@ -163,7 +163,7 @@ class InsertLinkDialog(_Base):
         self.insert_button = self.buttons.addButton(
             self.t("wikieditor-toolbar-tool-link-insert"), QDialogButtonBox.ButtonRole.AcceptRole
         )
-        _primary(self.insert_button)
+        primary_button(self.insert_button)
         self.buttons.addButton(
             self.t("wikieditor-toolbar-tool-link-cancel"), QDialogButtonBox.ButtonRole.RejectRole
         )
@@ -391,7 +391,7 @@ class InsertFileDialog(_Base):
         insert = buttons.addButton(
             self.t("wikieditor-toolbar-tool-file-insert"), QDialogButtonBox.ButtonRole.AcceptRole
         )
-        _primary(insert)
+        primary_button(insert)
         buttons.addButton(
             self.t("wikieditor-toolbar-tool-file-cancel"), QDialogButtonBox.ButtonRole.RejectRole
         )
@@ -480,7 +480,7 @@ class InsertTableDialog(_Base):
         insert = buttons.addButton(
             self.t("wikieditor-toolbar-tool-table-insert"), QDialogButtonBox.ButtonRole.AcceptRole
         )
-        _primary(insert)
+        primary_button(insert)
         buttons.addButton(
             self.t("wikieditor-toolbar-tool-table-cancel"), QDialogButtonBox.ButtonRole.RejectRole
         )
@@ -572,7 +572,7 @@ class SearchReplaceDialog(_Base):
             self.t("wikieditor-toolbar-tool-replace-button-findnext"),
             QDialogButtonBox.ButtonRole.ActionRole,
         )
-        _primary(self.find_button)
+        primary_button(self.find_button)
         replace = buttons.addButton(
             self.t("wikieditor-toolbar-tool-replace-button-replace"),
             QDialogButtonBox.ButtonRole.ActionRole,

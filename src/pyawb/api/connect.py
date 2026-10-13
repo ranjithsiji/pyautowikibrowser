@@ -76,3 +76,9 @@ def connect(
     session.load_site()
     log_in(session, profile, password, keyring=keyring)
     return session
+
+
+def wiki_transport(config: AppConfig, lang: str, project: str) -> PywikibotTransport:
+    """Another Wikimedia wiki, read-only (a typo list kept elsewhere)."""
+    load_pywikibot(contact=config.user_agent_contact)
+    return PywikibotTransport(pywikibot_site(lang, project))
