@@ -31,6 +31,10 @@ O = rx.DotNetOptions  # noqa: E741
 _BracketedAtEndOfLine = _R(r" \(.*?\)$", O.COMPILED)
 _BoldTitleAlready3 = _R(r"^\s*({{[^\{\}]+}}\s*)*'''('')?\s*\w", O.COMPILED)
 _BoldTitleAlready4 = _R(r"^\s*'''", O.MULTILINE)
+# a word in these scripts may start right after another letter (no spaces between words)
+_NO_SPACE_SCRIPTS = (
+    r"[\p{Han}\p{Hiragana}\p{Katakana}\p{Thai}\p{Lao}\p{Khmer}\p{Myanmar}\p{Tibetan}ー]"
+)
 _DfnTag = _R(r"<\s*dfn\s*>", O.IGNORE_CASE)
 # bio used on it-wiki, automatically bolds link
 _NoBoldTitle = nested_template_regex(["year article header", "bio", "Terme défini"])
@@ -189,8 +193,13 @@ class BoldTitleMixin:
         if "'''" in article_text_no_templates[:fivepc]:
             return article_text_at_start, True
 
+        # Deliberate difference from AWB, whose prefix is ([^\[]|^): the title must start a word,
+        # so ال'''قط''' (Arabic article + noun) or Thecat -> The'''cat''' cannot happen. Scripts
+        # written without spaces between words have no word boundary to require.
         regex_bold_no_brackets = _R(
-            r"([^\[]|^)("
+            r"([^\[\w]|^|"
+            + _NO_SPACE_SCRIPTS
+            + r")("
             + esc_title_no_brackets
             + "|"
             + turn_first_to_lower(esc_title_no_brackets)

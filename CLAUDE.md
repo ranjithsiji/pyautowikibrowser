@@ -199,7 +199,9 @@ Run tests and pyright before calling any task done.
    comparers (`rules/skip.py`) and the page list model (`lists/listmaker.py`). Every AWB test file passes
    except `DiffTests.cs` (ported with the native diff in step 5) and `CacheTests.cs` (with `api/`); the 4
    skips are .NET/UI-only or need `api/`. Tagger's wiki lookups go through `parsers.tagger.TaggerLookups`,
-   implemented in `api/` in step 4.
+   implemented in `api/` in step 4. Deliberate difference: bold title (`parsers/boldtitle.py`) bolds the
+   title only at the start of a word (AWB bolded `قط` inside `القط`), except in scripts written without
+   spaces (Han, kana, Thai, ...); `tests/core/test_boldtitle_boundary.py`.
 4. Mostly done: `api/` (everything written against a `Transport` protocol; `PywikibotTransport` is the real one,
    tests use a fake): siteinfo -> `SiteConfig` (namespaces, aliases, magic words, RTL, month names, summary tag,
    AWB config pages, interwiki order, site matrix), login with bot passwords (keychain via `api/credentials.py`),
