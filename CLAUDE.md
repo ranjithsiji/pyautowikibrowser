@@ -50,6 +50,8 @@ Why Python wins:
 | `.../tags/`, `.../branches/` | Old releases | Ignore |
 | `/home/alphad13/Projects/mediawiki-extensions-WikiEditor` | MediaWiki WikiEditor (JS, GPL-2.0-or-later, 2026-10) | Editor toolbar: layout and `encapsulate` actions (`modules/jquery.wikiEditor.toolbar.config.js`), dialogs, translations in 273 languages (`i18n/`) |
 | `/home/alphad13/Projects/codemirror-mediawiki` | `@bhsd/codemirror-mediawiki` 4.7.1 (TS, GPL-2.0-or-later, 2026-10) | Highlighter: port the line-by-line stream tokenizer `src/token.ts` to a `QSyntaxHighlighter` (per-block state); its tests in `test/src/`. `mw/textSelection.ts` for `encapsulateSelection`; `matchBrackets`/`matchTag`/`fold`/`bidi` for later editor features |
+| `/var/www/html/mediawiki` | MediaWiki core 1.45.3 (local install, GPL-2.0-or-later) | `jquery.textSelection` and its QUnit tests, special characters, core i18n and language fallbacks |
+| `/home/alphad13/Projects/design-codex` | Wikimedia Codex 2.7.0 source (2026-09-30; tokens GPL-2.0+, icons MIT / designs CC BY 4.0) | Icons (`packages/codex-icons/src`) and design tokens (`packages/codex-design-tokens/src`), converted by `tools/porting/codex_data.py`; component styles (`packages/codex/src/components/*/*.vue` `<style>`) as the reference for `ui/styles/app.qss` |
 | `/home/alphad13/Projects/wikidiff2` | wikidiff2 (Tim Starling, C++, 2006; SWIG Python wrapper used by a 2009 Python AWB) | Native diff (step 5): MediaWiki's word-level diff with character-level diff for Han, Japanese and Thai; `DiffEngine.h` algorithm; `test/test-a*`, `test-b*` expected outputs |
 | `/home/alphad13/Projects/huggle3-qt-lx` | Huggle 3 (Qt C++, GPL-3.0) | Qt desktop patterns, packaging for 3 OSes |
 | wAwB gadget (`en.wikipedia.org/wiki/User:Ponor/wAwB`, JS, GPL) | In-browser AWB-like tool | Server-side diff/preview, protected regions, timed rule runs |
@@ -64,9 +66,10 @@ Key AWB sources: `WikiFunctions/Parse/*` (general fixes, ~15k lines), `WikiFunct
 | Language | Python 3.12+, fully type-annotated, `pyright` strict on `core/` |
 | Env and deps | `uv` (`pyproject.toml`, `uv.lock`) |
 | UI | PySide6 (Qt 6 Widgets, LGPL) for lists, toolbars, menus, options, dialogs. Not QML |
-| Look and feel | Fusion style forced on every OS + one QSS stylesheet with light/dark colour tokens (`pyawb.ui.theme`). Rules stay direction-neutral for RTL. Fonts stay OS-provided for script coverage |
+| Look and feel | Wikimedia Codex look: Fusion style forced on every OS + one QSS stylesheet (`ui/styles/app.qss`) styled after Codex components and filled from Codex design tokens, light and dark (`ui/styles/codex-tokens.json`, `pyawb.ui.theme`; decided 2026-10-13). Rules stay direction-neutral for RTL. Fonts stay OS-provided for script coverage |
+| Icons | Codex icons only (`pyawb.icons`, `@wikimedia/codex-icons`, the successor of OOUI's icons; `ui.icons.codex_icon`), never the OS icon theme: same look on every OS, per-language variants (bold B/F/ض...) and RTL mirroring |
 | Wikitext editor | `QPlainTextEdit` + `QSyntaxHighlighter` fed by a Python wikitext tokenizer ported from codemirror-mediawiki's `src/token.ts` (pure, tested, outside `ui/`). Avoid QScintilla (weak bidi) and browser editors (Chromium complex-script bugs). Editor actions are Python functions over (text, selection) with unit tests; Qt only passes selection in and out |
-| Editor toolbar | Built from data converted once from WikiEditor's toolbar config (sections, groups, tools, `encapsulate` actions, special characters from MediaWiki core); labels from WikiEditor's `i18n/` (273 languages); `encapsulate` semantics ported from core's `jquery.textSelection` |
+| Editor toolbar | `editor/toolbar.py` hand-ports WikiEditor's toolbar config (sections, groups, tools, `encapsulate` actions, help pages); special characters from MediaWiki core; labels from WikiEditor's and core's i18n with MediaWiki language fallbacks (`editor/messages.py`); `encapsulate` ported from core's `jquery.textSelection` (`editor/textselection.py`); Qt widget `ui/editor_toolbar.py`. Data copied by `tools/porting/wikieditor_data.py` |
 | Visual editing | "Visual" button opens the wiki's own VisualEditor (`?veaction=edit`) in the default browser. No embedded VisualEditor, no tiptap/ProseMirror (cannot round-trip wikitext) |
 | Regex | `regex` module only, through `pyawb.core.rx`. Never import `re` for rule matching |
 | Wiki API | pywikibot behind a thin `pyawb.api` wrapper, configured in code (no `user-config.py`) |
@@ -100,7 +103,9 @@ src/pyawb/
   lists/             # page list model, AWB list providers, pywikibot pagegenerators
   rules/             # find & replace, typo lists, skip conditions
   editor/            # editor logic without Qt: tokenizer.py (port of codemirror-mediawiki token.ts),
-                     #   mwconfig.py (per-wiki config from siteinfo), highlight_style.py (theme as data)
+                     #   mwconfig.py (per-wiki config from siteinfo), highlight_style.py (theme as data),
+                     #   textselection.py (encapsulate), toolbar.py (WikiEditor toolbar), messages.py (i18n)
+  icons/             # Codex icon set (codex-icons.json) and variant lookup
   scripting/         # custom Python modules, sandbox-ish runner with timeout
   settings/          # config.toml profiles; later AWB settings import
   paths.py           # per-OS config and data directories (PYAWB_HOME overrides)
@@ -204,8 +209,11 @@ Run tests and pyright before calling any task done.
 5. In progress. Done: wikitext highlighting. `editor/tokenizer.py` is a line-for-line port of codemirror-mediawiki's
    `token.ts` (+ TeX/JSON sub-modes; LilyPond not ported) passing all 2717 upstream tokenizer tests
    (`tests/editor/test_tokenizer_parity.py`); deliberate difference: `\p{M}` added to word classes so Indic words
-   stay whole. `ui/highlighter.py` runs it per block with the state kept on each block. Next: WikiEditor toolbar
-   and `encapsulate`, then the main window loop.
+   stay whole. `ui/highlighter.py` runs it per block with the state kept on each block. WikiEditor toolbar:
+   main/secondary rows, Advanced (heading menu, lists, size, gallery, redirect), Special characters (with
+   recently used), Help; `encapsulate` passes core's QUnit cases (`tests/editor/test_textselection.py`); Codex
+   icons and Codex design tokens. Next: WikiEditor's dialogs (insert link, insert file, insert table,
+   search and replace; their buttons are disabled until then), then the main window loop.
    UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.

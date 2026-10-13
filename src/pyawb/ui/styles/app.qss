@@ -1,111 +1,229 @@
-/* PyAutoWikiBrowser application stylesheet. Colour placeholders (dollar + name) are filled by pyawb.ui.theme.
+/* PyAutoWikiBrowser application stylesheet: Wikimedia Codex's components drawn with Codex's design
+   tokens. Placeholders (dollar + Codex token name with "-" written "_") are filled by pyawb.ui.theme;
+   $icon_check is a file with Codex's check icon.
+   Component rules follow Codex's own styles (design-codex packages/codex/src/components, the .vue files
+   and themes/mixins); QSS cannot draw box-shadow focus rings, so focus is the border colour only.
    Keep rules direction-neutral (symmetric padding/margins) so RTL layouts work unchanged.
    Fonts are left to the OS so every script (Arabic, Malayalam, CJK...) gets a shaping font. */
 
 QWidget {
-    background: $bg;
-    color: $text;
-    selection-background-color: $selection;
-    selection-color: $text;
+    background: $background_color_neutral_subtle;
+    color: $color_base;
+    selection-background-color: $background_color_progressive_subtle__active;
+    selection-color: $color_emphasized;
 }
 
-QMainWindow::separator { background: $border; width: 1px; height: 1px; }
+QMainWindow::separator { background: $border_color_subtle; width: 1px; height: 1px; }
 
-/* Text inputs */
+/* TextInput / TextArea */
 QPlainTextEdit, QTextEdit, QLineEdit, QSpinBox, QComboBox, QListView, QTreeView, QTableView {
-    background: $surface;
-    border: 1px solid $border;
-    border-radius: 4px;
+    background: $background_color_base;
+    border: $border_width_base solid $border_color_interactive;
+    border-radius: $border_radius_base;
 }
-QLineEdit, QSpinBox, QComboBox { padding: 4px 6px; min-height: 18px; }
+QLineEdit, QSpinBox, QComboBox { padding: 4px 8px; min-height: 22px; }
+QPlainTextEdit:hover, QTextEdit:hover, QLineEdit:hover, QSpinBox:hover, QComboBox:hover {
+    border-color: $border_color_interactive__hover;
+}
 QPlainTextEdit:focus, QTextEdit:focus, QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-    border-color: $accent;
+    border-color: $border_color_progressive__focus;
 }
-QPlainTextEdit#editor { padding: 4px; }
+QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled, QPlainTextEdit:disabled {
+    background: $background_color_disabled_subtle;
+    border-color: $border_color_disabled;
+    color: $color_disabled;
+}
+QPlainTextEdit#editor { padding: 4px; border-color: $border_color_base; border-radius: 0; }
+QPlainTextEdit#editor:focus { border-color: $border_color_progressive__focus; }
 
-/* Buttons */
+/* Button (default): Codex Button.vue + themes/mixins/button.less. QSS min-height is the content
+   box: min-size-interactive-pointer (32px) minus the two 1px borders. */
 QPushButton, QToolButton {
-    background: $surface_alt;
-    border: 1px solid $border_strong;
-    border-radius: 4px;
-    padding: 5px 12px;
-}
-QPushButton:hover, QToolButton:hover { border-color: $accent; }
-QPushButton:pressed, QToolButton:pressed { background: $border; }
-QPushButton:disabled, QToolButton:disabled { color: $text_muted; border-color: $border; }
-QPushButton[primary="true"] {
-    background: $accent;
-    border-color: $accent;
-    color: $accent_text;
+    background: $background_color_interactive_subtle;
+    border: $border_width_base solid $border_color_interactive;
+    border-radius: $border_radius_base;
+    color: $color_neutral;
     font-weight: bold;
+    min-height: 30px;
+    padding: 0 $spacing_horizontal_button;
 }
-QPushButton[primary="true"]:hover { background: $accent_hover; border-color: $accent_hover; }
-QPushButton[destructive="true"] { color: $danger; border-color: $danger; }
+QPushButton:hover, QToolButton:hover {
+    background: $background_color_interactive_subtle__hover;
+    border-color: $border_color_interactive__hover;
+}
+QPushButton:pressed, QToolButton:pressed, QToolButton:checked {
+    background: $background_color_interactive_subtle__active;
+    border-color: $border_color_interactive__active;
+}
+QPushButton:focus, QToolButton:focus { border-color: $border_color_progressive__focus; }
+QPushButton:disabled, QToolButton:disabled {
+    background: $background_color_disabled;
+    border-color: $border_color_transparent;
+    color: $color_inverted;
+}
 
-/* Check boxes and radio buttons: an explicit outline so they stay visible in dark mode */
+/* Button, primary weight: progressive and destructive actions */
+QPushButton[primary="true"] {
+    background: $background_color_progressive;
+    border-color: $border_color_transparent;
+    color: $color_inverted_fixed;
+}
+QPushButton[primary="true"]:hover { background: $background_color_progressive__hover; }
+QPushButton[primary="true"]:pressed { background: $background_color_progressive__active; }
+QPushButton[primary="true"]:focus { border-color: $border_color_progressive__focus; }
+QPushButton[primary="true"][destructive="true"] { background: $background_color_destructive; }
+QPushButton[primary="true"][destructive="true"]:hover { background: $background_color_destructive__hover; }
+QPushButton[primary="true"][destructive="true"]:pressed { background: $background_color_destructive__active; }
+
+/* Button, normal weight, destructive action */
+QPushButton[destructive="true"] {
+    background: $background_color_destructive_subtle;
+    border-color: $border_color_destructive;
+    color: $color_destructive;
+}
+QPushButton[destructive="true"]:hover {
+    background: $background_color_destructive_subtle__hover;
+    border-color: $border_color_destructive__hover;
+    color: $color_destructive__hover;
+}
+QPushButton[destructive="true"]:pressed {
+    background: $background_color_destructive_subtle__active;
+    border-color: $border_color_destructive__active;
+    color: $color_destructive__active;
+}
+
+/* Button, quiet weight: tool buttons in toolbars (autoRaise); icon-only ones are square */
+QToolButton[autoRaise="true"] {
+    background: $background_color_transparent;
+    border-color: $border_color_transparent;
+    color: $color_neutral;
+    min-width: 30px;
+    padding: 0 6px;
+}
+QToolButton[autoRaise="true"]:hover { background: $background_color_interactive_subtle__hover; }
+QToolButton[autoRaise="true"]:pressed { background: $background_color_interactive_subtle__active; }
+QToolButton[autoRaise="true"]:checked {
+    background: $background_color_progressive_subtle__active;
+    color: $color_progressive__active;
+}
+QToolButton[autoRaise="true"]:focus { border-color: $border_color_progressive__focus; }
+QToolButton[autoRaise="true"]:disabled {
+    background: $background_color_transparent;
+    color: $color_disabled;
+}
+
+/* Checkbox and Radio */
 QCheckBox::indicator, QRadioButton::indicator {
-    width: 14px;
-    height: 14px;
-    border: 1px solid $border_strong;
-    background: $surface;
+    width: 18px;
+    height: 18px;
+    border: $border_width_base solid $border_color_interactive;
+    background: $background_color_base;
 }
-QCheckBox::indicator { border-radius: 3px; }
-QRadioButton::indicator { border-radius: 8px; }
-QCheckBox::indicator:hover, QRadioButton::indicator:hover { border-color: $accent; }
-QCheckBox::indicator:checked, QRadioButton::indicator:checked {
-    background: $accent;
-    border-color: $accent;
+QCheckBox::indicator { border-radius: $border_radius_base; }
+QRadioButton::indicator { border-radius: 10px; }
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {
+    border-color: $border_color_interactive__hover;
+}
+QCheckBox::indicator:checked {
+    background: $background_color_input_binary__checked;
+    border-color: $background_color_input_binary__checked;
+    image: url($icon_check);
+}
+QRadioButton::indicator:checked {
+    background: $background_color_base;
+    border: 6px solid $background_color_input_binary__checked;
+    width: 8px;
+    height: 8px;
+}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {
+    background: $background_color_disabled_subtle;
+    border-color: $border_color_disabled;
 }
 
-/* Lists and tables */
+/* Table and list selection */
 QHeaderView::section {
-    background: $surface_alt;
+    background: $background_color_interactive_subtle;
     border: none;
-    border-bottom: 1px solid $border;
-    padding: 4px 6px;
+    border-bottom: $border_width_base solid $border_color_base;
+    font-weight: bold;
+    padding: 6px 8px;
 }
+QListView::item:hover, QTreeView::item:hover { background: $background_color_interactive_subtle__hover; }
 QListView::item:selected, QTreeView::item:selected, QTableView::item:selected {
-    background: $selection;
-    color: $text;
+    background: $background_color_progressive_subtle;
+    color: $color_progressive;
 }
 
-/* Tabs */
-QTabWidget::pane { border: 1px solid $border; border-radius: 4px; top: -1px; }
+/* Tabs (quiet): the current tab is progressive with a thick underline */
+QTabWidget::pane { border: none; border-top: $border_width_base solid $border_color_subtle; top: -1px; }
 QTabBar::tab {
-    background: $surface_alt;
-    border: 1px solid $border;
-    padding: 5px 12px;
+    background: transparent;
+    border: none;
+    border-bottom: $border_width_thick solid transparent;
+    color: $color_base;
+    font-weight: bold;
+    padding: 6px 12px;
     margin: 0 1px;
 }
-QTabBar::tab:selected { background: $surface; border-bottom-color: $surface; }
-QTabBar::tab:!selected:hover { color: $accent; }
+QTabBar::tab:hover { color: $color_base__hover; border-bottom-color: $border_color_interactive__hover; }
+QTabBar::tab:selected { color: $color_progressive; border-bottom-color: $border_color_progressive__focus; }
 
-/* Group boxes, menus, bars */
+/* Fieldset, Menu, bars */
 QGroupBox {
-    border: 1px solid $border;
-    border-radius: 4px;
+    border: $border_width_base solid $border_color_subtle;
+    border-radius: $border_radius_base;
     margin-top: 14px;
     padding: 8px;
 }
-QGroupBox::title { subcontrol-origin: margin; padding: 0 4px; color: $text_muted; }
-QMenuBar { background: $bg; border-bottom: 1px solid $border; }
+QGroupBox::title { subcontrol-origin: margin; padding: 0 4px; color: $color_subtle; font-weight: bold; }
+QMenuBar { background: $background_color_neutral_subtle; border-bottom: $border_width_base solid $border_color_subtle; }
 QMenuBar::item { padding: 4px 8px; background: transparent; }
-QMenuBar::item:selected, QMenu::item:selected { background: $selection; }
-QMenu { background: $surface; border: 1px solid $border; padding: 4px; }
-QMenu::item { padding: 4px 16px; }
-QMenu::separator { height: 1px; background: $border; margin: 4px 0; }
-QToolBar { background: $bg; border: none; spacing: 4px; padding: 2px; }
-QStatusBar { background: $surface_alt; border-top: 1px solid $border; color: $text_muted; }
-QToolTip { background: $surface; color: $text; border: 1px solid $border_strong; padding: 4px; }
+QMenuBar::item:selected { background: $background_color_interactive_subtle__hover; }
+QMenu {
+    background: $background_color_base;
+    border: $border_width_base solid $border_color_base;
+    border-radius: $border_radius_base;
+    padding: 4px 0;
+}
+QMenu::item { padding: 6px 12px; }
+QMenu::item:selected { background: $background_color_interactive_subtle__hover; color: $color_emphasized; }
+QMenu::item:disabled { color: $color_disabled; }
+QMenu::separator { height: 1px; background: $border_color_muted; margin: 4px 0; }
+QToolBar { background: $background_color_neutral_subtle; border: none; spacing: 4px; padding: 2px; }
+QStatusBar {
+    background: $background_color_interactive_subtle;
+    border-top: $border_width_base solid $border_color_subtle;
+    color: $color_subtle;
+}
+QToolTip {
+    background: $background_color_base;
+    color: $color_base;
+    border: $border_width_base solid $border_color_base;
+    border-radius: $border_radius_base;
+    padding: 4px 8px;
+}
+
+/* WikiEditor toolbar: a band on top of the editor, framed with it, as in WikiEditor */
+QWidget#wikiEditorToolbar {
+    background: $background_color_interactive_subtle;
+    border: $border_width_base solid $border_color_base;
+    border-bottom: none;
+}
+QWidget#wikiEditorToolbarRow { background: transparent; }
+QLabel#wikiEditorGroupLabel { background: transparent; color: $color_subtle; padding: 0 4px; }
+QListWidget#bookletIndex, QListWidget#specialCharacters, QTextBrowser#helpBrowser {
+    background: $background_color_base;
+    border-color: $border_color_subtle;
+}
 
 /* Scrollbars: thin and identical everywhere (no native overlay vs. classic differences) */
 QScrollBar:vertical { background: transparent; width: 10px; margin: 0; }
 QScrollBar:horizontal { background: transparent; height: 10px; margin: 0; }
-QScrollBar::handle { background: $border_strong; border-radius: 4px; min-height: 24px; min-width: 24px; }
-QScrollBar::handle:hover { background: $text_muted; }
+QScrollBar::handle { background: $border_color_base; border-radius: 4px; min-height: 24px; min-width: 24px; }
+QScrollBar::handle:hover { background: $border_color_interactive; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
-QSplitter::handle { background: $border; }
+QSplitter::handle { background: $border_color_subtle; }
 QSplitter::handle:horizontal { width: 1px; }
 QSplitter::handle:vertical { height: 1px; }

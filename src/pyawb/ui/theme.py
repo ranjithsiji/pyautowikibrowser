@@ -8,11 +8,17 @@
 # This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 # without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
-"""One look on every OS: Fusion style + a palette + a QSS stylesheet with colour tokens.
+"""One look on every OS: Fusion style + a palette + a QSS stylesheet with Codex's design tokens.
 
 Native styles (Windows 11, macOS Aqua, GTK) each interpret stylesheets differently, so we always
-use Fusion, which draws every widget itself. QSS has no variables; `app.qss` uses `$token`
-placeholders filled from the token tables below.
+use Fusion, which draws every widget itself. The colours, radii and spacing are Wikimedia Codex
+design tokens (https://doc.wikimedia.org/codex/latest/design-tokens/overview.html), light and
+dark mode, converted by tools/porting/codex_data.py into styles/codex-tokens.json (Codex 2.7.0,
+GPL-2.0-or-later, styles/codex-tokens.LICENSE). With the Codex icons (pyawb.icons) this gives
+MediaWiki's own look.
+
+QSS has no variables; `app.qss` uses `$token` placeholders: Codex's token names with `-` written
+`_` (`$background_color_progressive` for `background-color-progressive`).
 
 Only direction-neutral properties (symmetric padding/margins) belong in the stylesheet, so the
 same rules work for RTL wikis.
@@ -21,12 +27,19 @@ same rules work for RTL wikis.
 from __future__ import annotations
 
 import enum
+import json
+import tempfile
+from functools import cache
 from importlib.resources import files
+from pathlib import Path
 from string import Template
 
+import regex
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from PySide6.QtWidgets import QApplication
+
+from pyawb.icons import icon_svg
 
 
 class Mode(enum.StrEnum):
@@ -35,39 +48,25 @@ class Mode(enum.StrEnum):
     DARK = "dark"
 
 
-LIGHT: dict[str, str] = {
-    "bg": "#f6f7f9",
-    "surface": "#ffffff",
-    "surface_alt": "#eef0f3",
-    "border": "#d0d4da",
-    "border_strong": "#a9b0ba",
-    "text": "#1d2127",
-    "text_muted": "#5d6570",
-    "accent": "#3366cc",  # MediaWiki progressive blue
-    "accent_hover": "#2a4b8d",
-    "accent_text": "#ffffff",
-    "selection": "#c9d8f5",
-    "danger": "#d73333",
-    "diff_add": "#d8f0dd",
-    "diff_del": "#fbe1e1",
-}
+_RGBA = regex.compile(r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)")
 
-DARK: dict[str, str] = {
-    "bg": "#1b1d21",
-    "surface": "#23262b",
-    "surface_alt": "#2c3036",
-    "border": "#3a3f47",
-    "border_strong": "#565d68",
-    "text": "#e6e8eb",
-    "text_muted": "#9aa2ad",
-    "accent": "#6d8af0",
-    "accent_hover": "#8ea5f5",
-    "accent_text": "#0f1115",
-    "selection": "#33467a",
-    "danger": "#f07272",
-    "diff_add": "#1f3a27",
-    "diff_del": "#45242a",
-}
+
+def _qss_value(value: str) -> str:
+    # QSS reads rgba() alpha as 0-255, CSS as 0-1: write #AARRGGBB instead
+    m = _RGBA.fullmatch(value.strip())
+    if m:
+        r, g, b = (int(m.group(i)) for i in (1, 2, 3))
+        a = round(float(m.group(4)) * 255)
+        return f"#{a:02x}{r:02x}{g:02x}{b:02x}"
+    return value
+
+
+@cache
+def codex_tokens() -> dict[str, dict[str, str]]:
+    """Codex's tokens by mode ("light", "dark"), with Codex's names and CSS values."""
+    text = files("pyawb.ui.styles").joinpath("codex-tokens.json").read_text(encoding="utf-8")
+    data = json.loads(text)
+    return {"light": data["light"], "dark": data["dark"]}
 
 
 def resolve(mode: Mode) -> Mode:
@@ -78,35 +77,54 @@ def resolve(mode: Mode) -> Mode:
 
 
 def tokens(mode: Mode) -> dict[str, str]:
-    return DARK if resolve(mode) is Mode.DARK else LIGHT
+    """The tokens for a mode as QSS placeholders: `-` -> `_`, values usable in QSS."""
+    raw = codex_tokens()["dark" if resolve(mode) is Mode.DARK else "light"]
+    return {name.replace("-", "_"): _qss_value(value) for name, value in raw.items()}
+
+
+@cache
+def _icon_dir() -> Path:
+    return Path(tempfile.mkdtemp(prefix="pyawb-theme-"))
+
+
+def _icon_url(name: str, color: str) -> str:
+    """A file with a Codex icon in color, for QSS `image: url(...)` (QSS cannot take data)."""
+    path = _icon_dir() / f"{name}-{color.lstrip('#')}.svg"
+    if not path.exists():
+        path.write_bytes(icon_svg(name, color=color) or b"")
+    return path.as_posix()
 
 
 def stylesheet(mode: Mode) -> str:
     template = files("pyawb.ui.styles").joinpath("app.qss").read_text(encoding="utf-8")
-    return Template(template).substitute(tokens(mode))
+    t = tokens(mode)
+    # Codex's checkbox mark: the check icon in the inverted colour
+    t["icon_check"] = _icon_url("check", t["color_inverted_fixed"])
+    return Template(template).substitute(t)
 
 
 def palette(mode: Mode) -> QPalette:
     """Palette matching the tokens, for anything the stylesheet does not cover."""
-    t = {k: QColor(v) for k, v in tokens(mode).items()}
+    t = {k: QColor(v) for k, v in tokens(mode).items() if QColor.isValidColorName(v)}
     p = QPalette()
     R = QPalette.ColorRole
-    p.setColor(R.Window, t["bg"])
-    p.setColor(R.WindowText, t["text"])
-    p.setColor(R.Base, t["surface"])
-    p.setColor(R.AlternateBase, t["surface_alt"])
-    p.setColor(R.Text, t["text"])
-    p.setColor(R.PlaceholderText, t["text_muted"])
-    p.setColor(R.Button, t["surface_alt"])
-    p.setColor(R.ButtonText, t["text"])
-    p.setColor(R.Highlight, t["selection"])
-    p.setColor(R.HighlightedText, t["text"])
-    p.setColor(R.ToolTipBase, t["surface"])
-    p.setColor(R.ToolTipText, t["text"])
-    p.setColor(R.Link, t["accent"])
-    p.setColor(R.BrightText, t["danger"])
+    p.setColor(R.Window, t["background_color_neutral_subtle"])
+    p.setColor(R.WindowText, t["color_base"])
+    p.setColor(R.Base, t["background_color_base"])
+    p.setColor(R.AlternateBase, t["background_color_interactive_subtle"])
+    p.setColor(R.Text, t["color_base"])
+    p.setColor(R.PlaceholderText, t["color_placeholder"])
+    p.setColor(R.Button, t["background_color_interactive_subtle"])
+    p.setColor(R.ButtonText, t["color_base"])
+    p.setColor(R.Highlight, t["background_color_progressive_subtle"])
+    p.setColor(R.HighlightedText, t["color_base"])
+    p.setColor(R.ToolTipBase, t["background_color_base"])
+    p.setColor(R.ToolTipText, t["color_base"])
+    p.setColor(R.Link, t["color_progressive"])
+    p.setColor(R.LinkVisited, t["color_visited"])
+    p.setColor(R.BrightText, t["color_destructive"])
     for role in (R.WindowText, R.Text, R.ButtonText):
-        p.setColor(QPalette.ColorGroup.Disabled, role, t["text_muted"])
+        p.setColor(QPalette.ColorGroup.Disabled, role, t["color_disabled"])
     return p
 
 
