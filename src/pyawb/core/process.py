@@ -21,7 +21,7 @@ the edit loop can run off the UI thread. Left out: custom modules, external prog
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -495,3 +495,26 @@ def page_errors(text: str, article: Article) -> tuple[tuple[int, int], ...]:
         for start, length in errors.items():
             found.setdefault(start, length)
     return tuple(sorted(found.items()))
+
+
+_ParserReport = DotNetRegex(
+    r"<!--(?:(?!-->).)*?(?:NewPP limit report|Transclusion expansion time report|"
+    r"Saved in parser cache)(?:(?!-->).)*-->",
+    DotNetOptions.SINGLELINE,
+)
+_EmptyParagraph = DotNetRegex(r"<p><br ?/?></p>\n")
+
+
+def same_rendering(
+    before_html: str, before_links: Sequence[str], after_html: str, after_links: Sequence[str]
+) -> bool:
+    """Article.OnlyCosmeticChanged: the edit changes nothing readers see (same categories and
+    language links, same HTML once parser reports and empty paragraphs are removed). The
+    caller parses the saved page and the edited text (WikiSession.rendering)."""
+    if sorted(before_links) != sorted(after_links):
+        return False
+
+    def clean(html: str) -> str:
+        return _EmptyParagraph.replace(_ParserReport.replace(html, ""), "").strip()
+
+    return clean(before_html) == clean(after_html)

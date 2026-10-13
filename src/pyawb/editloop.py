@@ -74,6 +74,9 @@ class LoopOptions:
     apply_changes: bool = True
     sort_interwikis: bool = True
     pre_parse: bool = False
+    # Skip tab: "No alerts", "Only cosmetic changes" (two parses on the wiki)
+    skip_if_no_alerts: bool = False
+    skip_cosmetic: bool = False
 
 
 @dataclass
@@ -173,7 +176,8 @@ class EditLoop:
             return self._skip(result, "Page has character in Unicode Private Use Area")
 
         if not opts.apply_changes:
-            return result  # AWB's CompleteProcessPage without ProcessPage: Re-parse applies them
+            # AWB's CompleteProcessPage without ProcessPage: Re-parse applies the changes
+            return self._alerts_skip(result, opts) or result
         self.parsers.sort_interwikis = opts.sort_interwikis
         process.process_page(article, opts.process, self.parsers, self.remove_text)
 
@@ -183,13 +187,40 @@ class EditLoop:
         reason = process.no_change_skip_reason(article, opts.process)
         if reason is None:
             reason = process.contains_skip_reason(article, opts.process, after=True)
+        if reason is None and opts.skip_cosmetic and self._only_cosmetic(article, page):
+            reason = "Only cosmetic changes made"
         if reason is not None:
             return self._skip(result, reason)
+        skipped = self._alerts_skip(result, opts)
+        if skipped is not None:
+            return skipped
 
         result.summary = process.make_default_edit_summary(
             article, opts.summary, article.article_text, opts.section_summary
         )
         return result
+
+    def _alerts_skip(self, result: LoadResult, opts: LoopOptions) -> LoadResult | None:
+        """Skip ▸ No alerts (CompleteProcessPage): the page has nothing to warn about."""
+        article = result.article
+        if (
+            opts.skip_if_no_alerts
+            and article is not None
+            and not process.page_info(article.article_text, article).alerts
+        ):
+            return self._skip(result, "Page has no alerts")
+        return None
+
+    def _only_cosmetic(self, article: Article, page: PageInfo) -> bool:
+        """Skip ▸ Only cosmetic changes (Article.OnlyCosmeticChanged): nothing changed, or the
+        saved page and the edited text render the same."""
+        if article.no_article_text_changed:
+            return True
+        if not page.exists:
+            return False
+        before = self.session.rendering(page.title)
+        after = self.session.rendering(page.title, article.article_text)
+        return process.same_rendering(before.html, before.links, after.html, after.links)
 
     def _protection_skip_reason(self, page: PageInfo) -> str | None:
         user = self.session.user

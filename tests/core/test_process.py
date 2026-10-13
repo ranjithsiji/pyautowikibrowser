@@ -172,3 +172,13 @@ def test_page_errors_positions() -> None:
     starts = [s for s, _ in errors]
     assert text.index("[[|x]]") in starts and text.index("[[a||b]]") in starts
     assert text.index("titel") in starts  # bad citation parameter
+
+
+def test_same_rendering() -> None:
+    from pyawb.core.process import same_rendering
+
+    report = "<!--\nNewPP limit report\nCPU time 0.1\n-->\n<!-- Saved in parser cache key x -->"
+    assert same_rendering("<p>A</p>" + report, ["cat:X"], "<p>A</p>\n", ["cat:X"])
+    assert same_rendering("<p>A</p><p><br></p>\n", [], "<p>A</p>", [])
+    assert not same_rendering("<p>A</p>", ["cat:X"], "<p>A</p>", ["cat:Y"])
+    assert not same_rendering("<p>A</p>", [], "<p>B</p>", [])

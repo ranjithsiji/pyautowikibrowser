@@ -102,6 +102,12 @@ def md5(text: str) -> str:
     return hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
+@dataclass(frozen=True)
+class Rendering:
+    html: str
+    links: tuple[str, ...]  # categories and language links, sorted
+
+
 class WikiSession:
     """A connection to one wiki (AWB's Session + ApiEdit)."""
 
@@ -363,6 +369,33 @@ class WikiSession:
             notes = "<p>".join(str(w) for w in warnings)
             html = f'<div class="previewnote" style="color:#d33">{notes}<p></div>' + html
         return html
+
+    def rendering(self, title: str, text: str | None = None) -> Rendering:
+        """The parsed page (text None: the saved revision) as Article.OnlyCosmeticChanged reads
+        it: the HTML, and the categories and language links."""
+        params: dict[str, Param] = {
+            "action": "parse",
+            "prop": "text|langlinks|categories",
+            "disablelimitreport": True,
+        }
+        if text is None:
+            params["page"] = title
+        else:
+            params.update(
+                title=title,
+                text=tools.convert_from_local_line_endings(text),
+                pst=True,
+                contentmodel="wikitext",
+            )
+        parse: Mapping[str, Any] = check_errors(
+            self.transport.request(params, post=text is not None)
+        ).get("parse", {})
+        cats = sorted("cat:" + str(c.get("category", "")) for c in parse.get("categories", ()))
+        langs = sorted(
+            "lang:" + str(link.get("lang", "")) + ":" + str(link.get("title", ""))
+            for link in parse.get("langlinks", ())
+        )
+        return Rendering(str(parse.get("text", "")), tuple(cats + langs))
 
     def compare(self, title: str, text: str) -> str:
         """The wiki's own diff (action=compare) of the current revision against text, as HTML

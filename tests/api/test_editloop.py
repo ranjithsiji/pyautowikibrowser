@@ -194,3 +194,24 @@ def test_pre_parse_does_not_stop_for_messages() -> None:
     o.pre_parse = True
     result = loop.load("قط", o)
     assert not result.new_messages and result.text == "حيوان [[أليف]] صغير."
+
+
+def test_skip_if_no_alerts() -> None:
+    loop, _ = loop_with("قط", open_response("قط", "حيوان [[أليف|أليف]] صغير.\n[[تصنيف:حيوانات]]"))
+    o = opts(general_fixes=True)
+    o.skip_if_no_alerts = True
+    assert loop.load("قط", o).skip_reason == "Page has no alerts"
+    loop, _ = loop_with("قط", open_response("قط", "حيوان [[أليف|أليف]] صغير."))
+    assert not loop.load("قط", o).skipped  # "No category" is an alert
+
+
+def test_skip_only_cosmetic_changes() -> None:
+    loop, t = loop_with("قط", open_response("قط", "حيوان [[أليف|أليف]] صغير."))
+    t.responses[("action", "parse")] = {
+        "parse": {"text": "<p>حيوان <a>أليف</a> صغير.</p>", "categories": [], "langlinks": []}
+    }
+    o = opts(general_fixes=True)
+    o.skip_cosmetic = True
+    assert loop.load("قط", o).skip_reason == "Only cosmetic changes made"
+    parses = [p for p, _, _ in t.requests if p.get("action") == "parse"]
+    assert parses[0]["page"] == "قط" and parses[1]["text"] == "حيوان [[أليف]] صغير."

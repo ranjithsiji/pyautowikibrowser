@@ -68,6 +68,8 @@ from PySide6.QtWidgets import (
 
 from pyawb import __version__, paths
 from pyawb.api import connect, credentials
+from pyawb.api.errors import SpamlistException
+from pyawb.api.models import SaveInfo
 from pyawb.api.session import WikiSession
 from pyawb.api.typolist import fetch_english_typo_list, fetch_typo_list
 from pyawb.core import namespace, process, tools
@@ -744,6 +746,7 @@ class MainWindow(QMainWindow):
             self.set_text_direction(site.rtl)
         self.list_maker.set_wiki(wiki, site)
         self.options.set_site(site)
+        self.logs.set_site(site)
         self.typos = None
         self.wiki_label.setText(site.url.replace("https://", "").replace(".org", ""))
         self._update_user()
@@ -1505,7 +1508,7 @@ class MainWindow(QMainWindow):
             self._save_failed,
         )
 
-    def _saved(self, _info: object) -> None:
+    def _saved(self, info: object) -> None:
         self._set_busy(False, self.tr("Saved"))
         self.last_text = ""
         result = self.current
@@ -1515,14 +1518,37 @@ class MainWindow(QMainWindow):
         if result is not None and result.page is not None and not result.page.exists:
             self.new_pages += 1
         if result is not None:
-            self.logs.log_saved(result.page.title if result.page else result.title)
+            self.logs.log_saved(
+                result.page.title if result.page else result.title,
+                info.new_revision_id if isinstance(info, SaveInfo) else 0,
+            )
         self._update_counts()
         self._done_with_page(ArticleList.SAVED)
 
     def _save_failed(self, error: Exception) -> None:
+        if isinstance(error, SpamlistException):
+            self._spam_blocked(error)
+            return
         # the page stays loaded: the user may retry, edit or skip
         self._set_busy(False, self.tr("Save failed: %1").replace("%1", str(error)))
         QMessageBox.warning(self, self.tr("Save"), str(error) or type(error).__name__)
+
+    def _spam_blocked(self, error: SpamlistException) -> None:
+        """The spam blacklist stopped the save (AWB ApiEditExceptionCaught): skip, or with
+        Skip ▸ "Edit blocked by spam filter" off, offer to load the page again first."""
+        self._set_busy(False)
+        message = str(error) or self.tr("Blocked by the spam blacklist")
+        if not self.options.skip_spam_filter.isChecked() and (
+            QMessageBox.question(
+                self,
+                self.tr("Spam blacklist"),
+                message + "\n" + self.tr("Try and edit again?"),
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
+            self.load_index(self.current_index)
+            return
+        self.skip_page(message)
 
     def skip_page(self, reason: str) -> None:
         if self.current is None or self.busy:

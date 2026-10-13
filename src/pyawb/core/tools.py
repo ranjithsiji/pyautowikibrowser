@@ -810,6 +810,11 @@ def get_article_history_url(title: str) -> str:
     return non_prettified_url(title) + "&action=history"
 
 
+def get_diff_url(new_revision_id: int) -> str:
+    """Tools.OpenDiffInBrowser: the diff a saved edit made."""
+    return url_index() + "?diff=" + str(new_revision_id)
+
+
 def get_edit_url(title: str) -> str:
     """Variables.GetEditURL."""
     return non_prettified_url(title) + "&action=edit"

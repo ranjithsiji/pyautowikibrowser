@@ -14,16 +14,19 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSpinBox,
     QTabWidget,
@@ -247,51 +250,70 @@ class OptionsPanel(QTabWidget):
         self._update_more()
 
     def _make_skip_tab(self) -> None:
+        """AWB's Skip tab: text conditions, general skip options (with the kinds of "no
+        change" under it) and whether the page must exist."""
         skip = QWidget(self)
-        box = QGroupBox(self.tr("Skip the page if"), skip)
-        self.skip_no_changes = QCheckBox(self.tr("No changes are made"), box)
-        self.skip_no_changes.setChecked(True)
-        self.skip_whitespace = QCheckBox(self.tr("Only whitespace is changed"), box)
-        self.skip_casing = QCheckBox(self.tr("Only casing is changed"), box)
-        self.skip_minor_genfixes = QCheckBox(self.tr("Only minor general fixes"), box)
-        self.skip_genfixes = QCheckBox(self.tr("Only general fixes"), box)
-        self.skip_no_links = QCheckBox(self.tr("The page has no links"), box)
-        self.skip_redirect = QCheckBox(self.tr("The page is a redirect"), box)
-        self.skip_in_use = QCheckBox(self.tr("The page is in use ({{inuse}})"), box)
-        self.skip_non_existent = QCheckBox(self.tr("The page does not exist"), box)
-        self.skip_non_existent.setChecked(True)
-        self.skip_existent = QCheckBox(self.tr("The page exists"), box)
-        g = QGridLayout(box)
-        for i, w in enumerate(
-            (
-                self.skip_no_changes,
-                self.skip_whitespace,
-                self.skip_casing,
-                self.skip_minor_genfixes,
-                self.skip_genfixes,
-                self.skip_no_links,
-                self.skip_redirect,
-                self.skip_in_use,
-                self.skip_non_existent,
-                self.skip_existent,
-            )
-        ):
-            g.addWidget(w, i % 5, i // 5)
         self.contains = _ContainsRow(self.tr("Contains"), skip)
         self.not_contains = _ContainsRow(self.tr("Doesn't contain"), skip)
+
+        box = QGroupBox(self.tr("General skip options"), skip)
+        self.skip_in_use = QCheckBox(self.tr("Page is in use"), box)
+        self.skip_spam_filter = QCheckBox(self.tr("Edit blocked by spam filter"), box)
+        self.skip_spam_filter.setToolTip(
+            self.tr("Skip without asking when the spam blacklist stops a save")
+        )
+        self.skip_no_links = QCheckBox(self.tr("Page contains no links"), box)
+        self.skip_no_changes = QCheckBox(self.tr("No changes are made"), box)
+        self.skip_no_changes.setChecked(True)
+        self.skip_whitespace = QCheckBox(self.tr("Only whitespace"), box)
+        self.skip_casing = QCheckBox(self.tr("Only casing"), box)
+        self.skip_genfixes = QCheckBox(self.tr("Only genfixes"), box)
+        self.skip_minor_genfixes = QCheckBox(self.tr("Only minor genfixes"), box)
+        self.skip_cosmetic = QCheckBox(self.tr("Only cosmetic changes"), box)
+        self.skip_cosmetic.setToolTip(
+            self.tr("The edited page would look the same to readers (asks the wiki to render both)")
+        )
+        self.skip_redirect = QCheckBox(self.tr("Page is redirect"), box)
+        self.skip_no_alerts = QCheckBox(self.tr("No alerts"), box)
+        g = QGridLayout(box)
+        g.addWidget(self.skip_in_use, 0, 0)
+        g.addWidget(self.skip_spam_filter, 0, 1)
+        g.addWidget(self.skip_no_links, 1, 0, 1, 2)
+        g.addWidget(self.skip_no_changes, 2, 0, 1, 2)
+        sub = QGridLayout()
+        sub.setContentsMargins(20, 0, 0, 0)  # under "No changes are made", as in AWB
+        sub.addWidget(self.skip_whitespace, 0, 0)
+        sub.addWidget(self.skip_casing, 0, 1)
+        sub.addWidget(self.skip_genfixes, 1, 0)
+        sub.addWidget(self.skip_minor_genfixes, 1, 1)
+        sub.addWidget(self.skip_cosmetic, 2, 0, 1, 2)
+        g.addLayout(sub, 3, 0, 1, 2)
+        g.addWidget(self.skip_redirect, 4, 0)
+        g.addWidget(self.skip_no_alerts, 4, 1)
+        # "Only genfixes" covers the minor ones (AWB disables the second)
+        self.skip_genfixes.toggled.connect(lambda on: self.skip_minor_genfixes.setEnabled(not on))
+
+        page = QGroupBox(self.tr("Page"), skip)
+        self.page_exists = QRadioButton(self.tr("Exists"), page)
+        self.page_exists.setToolTip(self.tr("Skip pages that exist"))
+        self.page_missing = QRadioButton(self.tr("Doesn't exist"), page)
+        self.page_missing.setToolTip(self.tr("Skip pages that do not exist"))
+        self.page_any = QRadioButton(self.tr("Don't care"), page)
+        self.page_missing.setChecked(True)
+        self.page_group = QButtonGroup(page)
+        pl = QHBoxLayout(page)
+        for b in (self.page_exists, self.page_missing, self.page_any):
+            self.page_group.addButton(b)
+            pl.addWidget(b)
+        pl.addStretch(1)
+
         sl = QVBoxLayout(skip)
-        sl.addWidget(box)
         sl.addWidget(self.contains)
         sl.addWidget(self.not_contains)
+        sl.addWidget(box)
+        sl.addWidget(page)
         sl.addStretch(1)
         self.addTab(_scrolled(skip), self.tr("Skip"))
-
-        self.skip_non_existent.toggled.connect(
-            lambda on: on and self.skip_existent.setChecked(False)
-        )
-        self.skip_existent.toggled.connect(
-            lambda on: on and self.skip_non_existent.setChecked(False)
-        )
 
     def set_site(self, site: SiteConfig) -> None:
         """The connected wiki (its namespaces for the category and file fields)."""
@@ -393,8 +415,10 @@ class OptionsPanel(QTabWidget):
             process=p,
             follow_redirects=self.follow_redirects.isChecked(),
             skip_if_redirect=self.skip_redirect.isChecked(),
-            skip_non_existent=self.skip_non_existent.isChecked(),
-            skip_existent=self.skip_existent.isChecked(),
+            skip_non_existent=self.page_missing.isChecked(),
+            skip_existent=self.page_exists.isChecked(),
+            skip_if_no_alerts=self.skip_no_alerts.isChecked(),
+            skip_cosmetic=self.skip_cosmetic.isChecked(),
             skip_if_in_use=self.skip_in_use.isChecked(),
             section_summary=self.section_summary.isChecked(),
             summary=summary,

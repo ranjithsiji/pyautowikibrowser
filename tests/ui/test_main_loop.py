@@ -84,7 +84,8 @@ def test_skipped_pages_are_marked_and_the_loop_goes_on(qtbot: QtBot) -> None:
     qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
     assert w.skips == 2  # no change, non-existent
     assert statuses(w) == [ArticleList.SKIPPED, ArticleList.SKIPPED, ""]
-    assert [r[3] for r in w.logs.skipped.rows()] == ["No change", "Non-existent page"]
+    # newest first, as AWB sorts its logs
+    assert [r[3] for r in w.logs.skipped.rows()] == ["Non-existent page", "No change"]
     w.list_maker.remove_done()
     assert [a.name for a in w.list_maker.articles] == ["قط"]
 

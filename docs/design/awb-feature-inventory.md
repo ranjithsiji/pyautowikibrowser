@@ -167,10 +167,10 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Disambig tab + disambiguation dialog (unlink, {{dn}}, variants, unpipe, flip, reset, undo) | missing | C |
 | Skip: contains / doesn't contain, regex, case, check after | done | |
 | Skip: in use, no links, no change (+ whitespace, casing, genfixes, minor genfixes), redirect | done | |
-| Skip: edit blocked by spam filter | missing | A |
-| Skip: only cosmetic changes (same HTML) | missing | A (`action=parse` of both) |
-| Skip: no alerts | missing | A |
-| Skip: page exists / doesn't exist / don't care (radio) | partial (two check boxes) | A |
+| Skip: edit blocked by spam filter | done | unchecked: asks "Try and edit again?" and reloads the page |
+| Skip: only cosmetic changes (same HTML) | done | `WikiSession.rendering` + `process.same_rendering` |
+| Skip: no alerts | done | |
+| Skip: page exists / doesn't exist / don't care (radio) | done | AWB's layout: the kinds of "no change" under it |
 | Bots tab: auto save + delay, max edits, suppress "using AWB", nudge timer, auto shutdown | missing | C |
 | Start: summary, lock, minor, statistics, alerts, multiple wiki-links | done | |
 | Start: Delink selection (multiple wiki-links); a click on a link finds it | done | the pipe trick gives what MediaWiki shows |
@@ -182,7 +182,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | History tab (+ diffs, context menu: open in browser, refresh) | missing | C |
 | What links here tab | missing | C |
 | Edit summary tab | done (the page's summary above the editor) | |
-| Logs (saved/skipped, save, clear, add all to list) | done | A: tooltips, context menu, filter by reason |
+| Logs (saved/skipped, save, clear, add all to list) | done | newest first, as AWB |
 | Page logs (move/protect/delete) | missing | C |
 | Typos tab (on this page / overall statistics) | missing (engine `get_statistics`) | C |
 
@@ -204,7 +204,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Edit box: open page / talk page / history / selection in browser | done | |
 | Edit box: replace text with last edit, undo all changes | done | |
 | History: open in browser, refresh | missing | C |
-| Logs: add selected to list, cut, copy, remove, select all/none, open page/diff/history in browser, clear, reset; skipped: filter (exclude) by reason | missing | A |
+| Logs: add selected to list, cut, copy, remove, select all/none, open page/diff/history in browser, clear, reset; skipped: filter (exclude) by reason | done | |
 
 ## From the manual's screenshots
 
@@ -224,7 +224,7 @@ These items were missing from the tables above.
 | List context | Select ▸ All (Ctrl+A) / None / Inverse (Ctrl+Shift+I); Remove ▸ Selected / All / Duplicates / Non-main space | done | |
 | List menu | Shortcuts: Keep alphabetized Ctrl+Shift+A, Remove duplicates Ctrl+Shift+U, Remove non-main Ctrl+Shift+M, Filter Ctrl+Shift+F | done | |
 | List box | Text box + "+" button to add one title; page count; Remove; Filter | done | |
-| Logs context | Open diff in browser (Ctrl+Shift+D); Filter: Show only / Exclude (selected reasons) | missing | A |
+| Logs context | Open diff in browser (Ctrl+Shift+D); Filter: Show only / Exclude (selected reasons) | done | |
 | Logging to file tab | Log to XHTML / wiki code, verbose, folder; upload logs to a wiki page (location `$USER/Logs`, category, job name, max lines, watch, open in browser); status | missing | D |
 | Edit box menu | Paste more ▸ 10 slots (Ctrl+1…Ctrl+0) + Configure…; Go to line ▸ text box; Insert tag ▸ `{{-stub}}` box | done | |
 | Edit box | Custom toolbar buttons added by plugins and modules (Persian screenshot) | missing | E |
@@ -286,7 +286,7 @@ running app with screenshots. One commit per step.
 | A1 ✔ | **List**: List menu with shortcuts; list context menu (open page/history, cut/copy/paste, Select ▸, Remove ▸, Add selected to list from ▸, move to top/bottom, convert to/from talk, displaytitle, filter, save list in 4 formats, sort/reverse sort); keep alphabetized; add-one-title box; stop while making a list; missing sources (category user depth, user contribs with number, HTML scraper plain/advanced regex, CheckWiki URL/number) | `ListMaker.cs`, `ListBox2.cs`, `Lists/Providers/*` | User manual: Make list, list menus |
 | A2 ✔ | **Edit box**: context menu (word wrap, paste more + configure, save text to file, go to line, insert ▸ birth/death cats and category Ctrl+T, insert tag ▸, convert list to `*`/`#`, unicodify selected, bypass all redirects, fix all excess whitespace, re-parse F5, comment selected Ctrl+K, open page/talk/history/selection in browser, replace with last edit, undo all changes); diff double click undoes a line | `Main.cs` (mnuTextBox handlers), `ConfigurePasteMoreItems.cs`, `Tools.cs` | Find and replace: minor rules not applied on Re-parse; Regular expression: shortcut editing macros run by Re-parse |
 | A3 ✔ | **Options menu** (all toggles wired to `ProcessOptions`/engine flags), pre-parse mode, apply changes automatically, highlight Find matches/errors, auto focus end; **View menu** (toolbar, control panel F11, enlarge edit box F10, edit box toolbar, false positives); Tools ▸ reset counts, invalidate cache; Help F1; Start tab Delink selection, false positive button, Ctrl+G/Esc | `Main.cs`, `Article.cs` alerts | General fixes: the Options menu switches (restrict DEFAULTSORT, orphan tagging, MOS fixes, sort interwikis, reference tags) |
-| A4 | **Skip tab** extras (spam filter blocked, only cosmetic changes, no alerts, exists/doesn't/don't care radio); **Logs** context menu (add to list, cut/copy, remove, select, open page/diff/history, filter show only/exclude, clear, reset) | `LogControl.cs`, `Main.cs` skip checks | User manual: Skip tab, Logs |
+| A4 ✔ | **Skip tab** extras (spam filter blocked, only cosmetic changes, no alerts, exists/doesn't/don't care radio); **Logs** context menu (add to list, cut/copy, remove, select, open page/diff/history, filter show only/exclude, clear, reset) | `LogControl.cs`, `Main.cs` skip checks | User manual: Skip tab, Logs |
 | B1 ✔ | **List filter** dialog (namespaces, title, set operations, sort, duplicates) | `ListFilterForm.cs` | Database Scanner: results Filter uses the same dialog |
 | B2 | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |
 | B3 | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
