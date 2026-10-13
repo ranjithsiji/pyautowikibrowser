@@ -212,6 +212,9 @@ QStatusBar {
 QLabel#userLabel { padding: 1px 8px; color: $color_inverted_fixed; background: $background_color_destructive; }
 QLabel#userLabel[loggedIn="true"] { background: $color_success; }
 QLabel#positionLabel { padding: 0 8px; font-weight: bold; }
+/* the start screen: the step line and each step's heading */
+QLabel#startSteps { padding: 4px 0 8px 0; color: $color_subtle; }
+QLabel#startHeading { font-size: 16pt; font-weight: bold; color: $color_emphasized; padding: 4px 0; }
 /* the information bar: wiki, user, approval, mode (Codex's Info chip colours) */
 QWidget#infoChip { border-radius: 11px; border: $border_width_base solid $border_color_subtle; background: $background_color_neutral_subtle; }
 QWidget#infoChip[state="good"] { background: $background_color_success_subtle; border-color: $border_color_success; }

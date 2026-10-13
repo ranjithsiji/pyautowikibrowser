@@ -21,7 +21,8 @@ imports pywikibot.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Protocol
@@ -134,6 +135,18 @@ def pywikibot_site(
     return pwb.Site(lang, family)  # type: ignore[no-any-return]
 
 
+type SecondFactor = Callable[[str], str | None]
+"""Asked for a second login factor: gets the wiki's label for it, returns the code (or None)."""
+
+
+@dataclass(frozen=True)
+class Cookie:
+    name: str
+    value: str
+    domain: str
+    path: str = "/"
+
+
 class PywikibotTransport:
     """Transport over a pywikibot APISite."""
 
@@ -158,23 +171,53 @@ class PywikibotTransport:
             raise api_error(e.code, e.info, e.other) from e
         return check_errors(result)
 
-    def login(self, username: str, password: str) -> None:
+    def login(
+        self, username: str, password: str, second_factor: SecondFactor | None = None
+    ) -> None:
         """Log in without console prompts. A bot password ("Name@BotName") uses action=login;
-        a main password uses action=clientlogin (two-factor accounts need a bot password)."""
+        a main password uses action=clientlogin. When the wiki asks for a second factor (a
+        two-factor TOTP code, an e-mailed code), pywikibot's prompt is answered by
+        second_factor(label); None from it cancels the login."""
+        import pywikibot
         from pywikibot import login as pwb_login
         from pywikibot.exceptions import APIError, NoUsernameError
 
         from pyawb.api.session import LoginException
 
+        def ask(question: str, *args: Any, **kwargs: Any) -> str:
+            answer = second_factor(question) if second_factor is not None else None
+            if not answer:
+                raise LoginException("the wiki asked for a second factor (two-factor code)")
+            return answer
+
         manager = pwb_login.ClientLoginManager(password=password, site=self.site, user=username)
+        prompt = pywikibot.input
+        pywikibot.input = ask  # ClientLoginManager asks for the code with pywikibot.input
         try:
             ok = manager.login(retry=False)
         except (APIError, NoUsernameError) as e:
             raise LoginException(str(e)) from e
+        finally:
+            pywikibot.input = prompt
         if not ok:
             raise LoginException(f"login as {username} failed")
         # tell the site who is logged in; it checks the session cookie against userinfo
         self.site.login(user=username.split("@", 1)[0], cookie_only=True)
+
+    def adopt_cookies(self, cookies: Iterable[Cookie], username: str) -> None:
+        """Use a session logged in elsewhere (the wiki's own login page in a browser: passkeys,
+        security keys and any other method the wiki offers): its cookies go into pywikibot's
+        HTTP session, and the site checks them against userinfo."""
+        from pywikibot.comms import http
+
+        from pyawb.api.session import LoginException
+
+        for c in cookies:
+            http.session.cookies.set(c.name, c.value, domain=c.domain, path=c.path or "/")
+        try:
+            self.site.login(user=username, cookie_only=True)
+        except Exception as e:  # pywikibot raises several kinds when the cookies do not log in
+            raise LoginException(f"the browser session did not log in: {e}") from e
 
     def logout(self) -> None:
         self.site.logout()
@@ -182,8 +225,10 @@ class PywikibotTransport:
 
 __all__ = [
     "ApiErrorException",
+    "Cookie",
     "Param",
     "PywikibotTransport",
+    "SecondFactor",
     "Transport",
     "load_pywikibot",
     "normalise_params",

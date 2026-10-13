@@ -18,7 +18,7 @@ Arabic or Devanagari text unreadable in the editor and the diff. The choice is k
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 THEMES = ("system", "light", "dark")
@@ -163,3 +163,31 @@ class Preferences:
         else:
             fonts[script] = choice
         return replace(self, fonts=fonts)
+
+
+# Noto's family names where they are not "Noto Sans <script>"
+_NOTO_NAMES: Mapping[str, tuple[str, ...]] = {
+    "SimplifiedChinese": ("Noto Sans CJK SC", "Noto Sans SC"),
+    "TraditionalChinese": ("Noto Sans CJK TC", "Noto Sans TC"),
+    "Japanese": ("Noto Sans CJK JP", "Noto Sans JP"),
+    "Korean": ("Noto Sans CJK KR", "Noto Sans KR"),
+    "Arabic": ("Noto Naskh Arabic", "Noto Sans Arabic"),
+    "Hebrew": ("Noto Sans Hebrew", "Noto Serif Hebrew"),
+    "Ol Chiki": ("Noto Sans Ol Chiki",),
+    "Nko": ("Noto Sans NKo",),
+}
+
+
+def suggest_font(script: str, families: Sequence[str]) -> str:
+    """A font to start with for the script, from the installed families that have it: its Noto
+    font if installed, else a family named after the script, else the first. "" for Latin (the
+    system's font has it) and when nothing is installed."""
+    if script == "Latin" or not families:
+        return ""
+    installed = {f.casefold(): f for f in families}
+    for name in (*_NOTO_NAMES.get(script, ()), f"Noto Sans {script}", f"Noto Serif {script}"):
+        if name.casefold() in installed:
+            return installed[name.casefold()]
+    word = script.casefold()
+    named = [f for f in families if word in f.casefold() and "mono" not in f.casefold()]
+    return named[0] if named else families[0]

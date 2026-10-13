@@ -102,3 +102,18 @@ def test_bad_preferences_fall_back() -> None:
     prefs = appconfig.parse(text).preferences
     assert prefs.theme == "system" and prefs.word_wrap is True
     assert prefs.font_for("Latin").editor_size == 0
+
+
+def test_suggest_font() -> None:
+    from pyawb.settings.preferences import suggest_font
+
+    families = ["AnjaliOldLipi", "Noto Sans Malayalam", "Noto Sans Malayalam Mono", "Rachana"]
+    assert suggest_font("Malayalam", families) == "Noto Sans Malayalam"
+    assert suggest_font("Malayalam", ["AnjaliOldLipi", "Manjari"]) == "AnjaliOldLipi"
+    assert suggest_font("Arabic", ["Amiri", "Noto Naskh Arabic", "Noto Sans Arabic"]) == (
+        "Noto Naskh Arabic"
+    )
+    assert suggest_font("Japanese", ["Noto Sans CJK JP", "IPAGothic"]) == "Noto Sans CJK JP"
+    assert suggest_font("Tamil", ["Lohit Tamil", "Latha"]) == "Lohit Tamil"
+    assert suggest_font("Latin", ["DejaVu Sans"]) == ""
+    assert suggest_font("Malayalam", []) == ""

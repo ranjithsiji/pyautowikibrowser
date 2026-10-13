@@ -294,3 +294,76 @@ def test_prefix_search_asks_for_title_widget_data() -> None:
     assert p["generator"] == "prefixsearch" and p["gpssearch"] == "Merc"
     assert p["ppprop"] == "disambiguation" and "description" in p["prop"]
     assert session.prefix_search("  ") == {}
+
+
+class _LoginTransport(FakeTransport):
+    """A fake that records how it was asked to log in."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.logins: list[tuple[str, str, object]] = []
+        self.cookies: list[object] = []
+
+    def login(self, username: str, password: str, second_factor: object = None) -> None:
+        self.logins.append((username, password, second_factor))
+
+    def adopt_cookies(self, cookies: object, username: str) -> None:
+        self.cookies.append((list(cookies), username))  # type: ignore[call-overload]
+
+
+def _login_session() -> tuple[WikiSession, _LoginTransport]:
+    t = _LoginTransport()
+    base, _ = make_session()
+    t.responses = base.transport.responses  # type: ignore[attr-defined]
+    t.pages = base.transport.pages  # type: ignore[attr-defined]
+    return WikiSession(t, base.site), t
+
+
+def test_login_passes_the_second_factor() -> None:
+    session, t = _login_session()
+
+    def code(label: str) -> str:
+        return "123456"
+
+    user = session.login("Alice", "secret", code)
+    assert user.name == "Alice" and t.logins == [("Alice", "secret", code)]
+    assert session.can_save
+
+
+def test_login_with_browser_cookies() -> None:
+    from pyawb.api.transport import Cookie
+
+    session, t = _login_session()
+    cookie = Cookie("arwikiSession", "abc", ".ar.wikipedia.org")
+    user = session.login_with_cookies([cookie], "Alice")
+    assert user.name == "Alice" and t.cookies == [([cookie], "Alice")]
+
+
+def test_pywikibot_prompt_is_answered_and_restored(monkeypatch: pytest.MonkeyPatch) -> None:
+    import pywikibot
+    from pywikibot import login as pwb_login
+
+    from pyawb.api.transport import PywikibotTransport
+
+    asked: list[str] = []
+
+    class FakeManager:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def login(self, retry: bool = False) -> bool:
+            asked.append(pywikibot.input("Two-factor authentication code", password=True))
+            return True
+
+    class FakeSite:
+        def login(self, **kwargs: object) -> None:
+            pass
+
+    monkeypatch.setattr(pwb_login, "ClientLoginManager", FakeManager)
+    prompt = pywikibot.input
+    PywikibotTransport(FakeSite()).login("Alice", "pw", lambda label: "654321")  # type: ignore[arg-type]
+    assert asked == ["654321"] and pywikibot.input is prompt
+
+    with pytest.raises(LoginException):  # no answer: the login is cancelled
+        PywikibotTransport(FakeSite()).login("Alice", "pw", lambda label: None)  # type: ignore[arg-type]
+    assert pywikibot.input is prompt

@@ -240,9 +240,12 @@ Run tests and pyright before calling any task done.
    run, Make changes: `editloop.Mode`), Start/Stop, Previous/Pause/Next, Save/Skip, Preview/Diff and an
    x/N progress; done pages stay in the list marked saved/skipped. Settings menu (theme, interface
    language from Meta-Wiki's languageinfo, fonts per script, user profiles, preferences) saved in
-   config.toml. Next: the start screen (language, wiki, fonts, login with two-factor or the wiki's own
-   login page, list), projects; then bot mode with the save delay, the native word-level diff (wikidiff2
-   port); find & replace rules are kept only for the session until project files.
+   config.toml. Start screen (ui/start_screen.py): interface language, wiki (Meta's open wikis),
+   fonts for its script, login (bot password; account password with the two-factor code asked by
+   pywikibot's clientlogin answered from the screen; the wiki's own login page in Qt WebEngine for
+   security keys/passkeys, cookies handed to pywikibot; Skip = offline), first list. Next: projects
+   (save/load), then bot mode with the save delay, the native word-level diff (wikidiff2 port); find &
+   replace rules are kept only for the session until project files.
    UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.

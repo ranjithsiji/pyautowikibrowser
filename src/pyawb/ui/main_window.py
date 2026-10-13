@@ -59,7 +59,6 @@ from PySide6.QtWidgets import (
 from pyawb import __version__, paths
 from pyawb.api import connect, credentials
 from pyawb.api.session import WikiSession
-from pyawb.api.sparql import PywikibotSparql
 from pyawb.api.typolist import fetch_english_typo_list, fetch_typo_list
 from pyawb.core import process, tools
 from pyawb.core.article import Article
@@ -72,7 +71,7 @@ from pyawb.editor.messages import Messages
 from pyawb.editor.mwconfig import MwConfig, default_config
 from pyawb.editor.toolbar import ToolbarSite, build_toolbar
 from pyawb.lists.listmaker import ArticleList
-from pyawb.lists.sources import WikiContext
+from pyawb.lists.sources import WikiContext, wiki_context
 from pyawb.rules import typos
 from pyawb.rules.typos import RegExTypoFix
 from pyawb.settings import appconfig
@@ -89,6 +88,7 @@ from pyawb.ui.login_dialog import LoginDialog
 from pyawb.ui.logs_tab import LogsTab
 from pyawb.ui.options_panel import OptionsError, OptionsPanel
 from pyawb.ui.settings_dialog import SettingsDialog
+from pyawb.ui.start_screen import StartResult
 from pyawb.ui.start_tab import StartTab
 from pyawb.ui.tasks import run_task
 
@@ -547,27 +547,9 @@ class MainWindow(QMainWindow):
 
         def work() -> tuple[WikiSession, WikiContext]:
             session = connect.connect(cfg, profile, password)
-            return session, self._wiki_context(cfg, session)
+            return session, wiki_context(cfg, session)
 
         run_task(work, self._connected, self._connect_failed)
-
-    @staticmethod
-    def _wiki_context(cfg: appconfig.AppConfig, session: WikiSession) -> WikiContext:
-        general: dict[str, Any] = (
-            dict(session.siteinfo.query.get("general", {})) if session.siteinfo else {}
-        )
-        try:
-            wikidata = connect.wikidata_transport(cfg)
-        except Exception:  # Wikidata unreachable: everything else still works
-            wikidata = None
-        return WikiContext(
-            transport=session.transport,
-            wikidata=wikidata,
-            sparql=PywikibotSparql(),
-            site_id=str(general.get("wikiid", "")),
-            article_url=session.siteinfo.article_url if session.siteinfo else "",
-            pywikibot_site=getattr(session.transport, "site", None),
-        )
 
     def _connected(self, result: object) -> None:
         session, wiki = result  # type: ignore[misc]
@@ -637,6 +619,16 @@ class MainWindow(QMainWindow):
         self._update_user()
         self._update_modes()
         self._update_buttons()
+
+    def adopt_start(self, result: StartResult) -> None:
+        """Begin with what the start screen set up: the session, its wiki and the first list."""
+        self.config = result.config
+        self.apply_preferences(result.config.preferences)
+        if result.session is not None:
+            self.use_session(result.session, result.wiki)
+        if result.pages:
+            self.list_maker.articles.add(list(result.pages))
+            self.list_maker.refresh()
 
     def _add_titles(self, titles: list[str]) -> None:
         self.list_maker.articles.add([Article(t) for t in titles])
@@ -1215,6 +1207,7 @@ class MainWindow(QMainWindow):
         if fonts.editor_size:
             editor_font.setPointSize(fonts.editor_size)
         self.editor.setFont(editor_font)
+        self.list_maker.list.setFont(editor_font)  # the titles are in the wiki's script
         self.highlighter.rehighlight()
         self.diff.setFont(QFont(fonts.diff) if fonts.diff else editor_font)
         if isinstance(app, QApplication) and fonts.interface:

@@ -15,15 +15,19 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pyawb.api.sparql import Sparql
 from pyawb.api.transport import Transport
 from pyawb.lists import providers as P
 from pyawb.lists.pagegenerators import PagegeneratorsListProvider
 from pyawb.lists.wikidataquery import WikidataQueryListProvider
+
+if TYPE_CHECKING:
+    from pyawb.api.session import WikiSession
+    from pyawb.settings.appconfig import AppConfig
 
 
 class Input(enum.Enum):
@@ -147,3 +151,26 @@ def criteria(src: Source, text: str) -> list[str]:
     if src.input is Input.NONE:
         return []
     return [c for c in text.split("|") if c.strip()]
+
+
+def wiki_context(config: AppConfig, session: WikiSession) -> WikiContext:
+    """What the list maker needs from a connected wiki (Wikidata and SPARQL for the Wikidata
+    query source). Blocking (it may open a Wikidata connection): run it off the UI thread."""
+    from pyawb.api import connect
+    from pyawb.api.sparql import PywikibotSparql
+
+    general: Mapping[str, Any] = (
+        session.siteinfo.query.get("general", {}) if session.siteinfo else {}
+    )
+    try:
+        wikidata: Transport | None = connect.wikidata_transport(config)
+    except Exception:  # Wikidata unreachable: everything else still works
+        wikidata = None
+    return WikiContext(
+        transport=session.transport,
+        wikidata=wikidata,
+        sparql=PywikibotSparql(),
+        site_id=str(general.get("wikiid", "")),
+        article_url=session.siteinfo.article_url if session.siteinfo else "",
+        pywikibot_site=getattr(session.transport, "site", None),
+    )

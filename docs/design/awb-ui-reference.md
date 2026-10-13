@@ -319,3 +319,25 @@ Save, Skip | Preview, Diff | x / N + progress bar**.
 - Applied at once: theme (and the highlighter's light/dark colours), interface language (WikiEditor
   toolbar; RTL languages mirror the window), fonts, word wrap; "When a page is loaded" (diff or edit
   box); "Ask before closing" while a page is open or a run is going.
+
+## 14. Start screen (built, 2026-10-13)
+
+`ui/start_screen.py`, before the main window (`ui/app.py`). Steps: 1. interface language (Meta-Wiki's
+list); 2. wiki: project + one of its open wikis (Meta's site matrix), or a script path; 3. fonts for that
+wiki's script (the Settings fonts page); 4. log in; 5. pages (the list maker, with the wiki once logged
+in). First run starts at 1; once a profile exists, at 4 (Back for the others). The choices are saved
+as the default profile and preferences.
+
+Log in, three ways:
+- **Bot password** (`action=login`), optionally remembered in the keychain.
+- **Account password**: pywikibot's `ClientLoginManager` (`action=clientlogin`); when the wiki asks for a
+  second factor (TOTP, e-mailed code) its prompt (`pywikibot.input`) is answered from the screen: the
+  login thread waits while a code field appears (`api.transport.SecondFactor`). Never stored.
+- **The wiki's own login page** (`ui/browser_login.py`, after vcut-gui): Special:UserLogin in Qt
+  WebEngine with its own cookie store; when `<wikiid>UserName` + `Session` (or CentralAuth's) cookies
+  appear, they go into pywikibot's HTTP session and are checked (`site.login(cookie_only=True)`,
+  `WikiSession.login_with_cookies`). Covers security keys and passkeys. Only when WebEngine is installed.
+- **Skip**: asks first ("without logging in … you cannot edit, and you cannot load pages or make lists
+  from the wiki"), then offline: manual and file lists only.
+
+Not yet tested against a real wiki with two-factor or a security key (no such account here).

@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 
 from pyawb.settings import languages
 from pyawb.settings.appconfig import AppConfig
-from pyawb.settings.preferences import SAMPLES, FontChoice, Preferences
+from pyawb.settings.preferences import SAMPLES, FontChoice, Preferences, suggest_font
 from pyawb.ui.editor_dialogs import primary_button
 
 DEFAULT_FONT = ""  # combo data for "the system's default"
@@ -68,9 +68,18 @@ def families_for_script(script: str) -> list[str]:
 class FontsPage(QWidget):
     """The fonts for one script at a time, with a live sample in that script."""
 
-    def __init__(self, prefs: Preferences, script: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        prefs: Preferences,
+        script: str,
+        parent: QWidget | None = None,
+        *,
+        fixed_script: bool = False,
+    ) -> None:
+        """fixed_script: only this script's fonts (the start screen, for the chosen wiki)."""
         super().__init__(parent)
         self.prefs = prefs
+        self.families: list[str] = []
         self.script = QComboBox(self)
         for name in sorted(SAMPLES):
             self.script.addItem(name, name)
@@ -119,6 +128,7 @@ class FontsPage(QWidget):
 
         self._current = script
         self.script.setCurrentIndex(max(self.script.findData(script), 0))
+        self.script.setEnabled(not fixed_script)
         self.script.currentIndexChanged.connect(self._script_changed)
         self.show_all.toggled.connect(lambda _: self._fill())
         for w in (self.editor_font, self.interface_font, self.diff_font):
@@ -133,10 +143,11 @@ class FontsPage(QWidget):
 
     def _fill(self) -> None:
         script = self._current
+        self.families = families_for_script(script)
         families = (
             sorted(QFontDatabase.families(), key=str.casefold)
             if self.show_all.isChecked()
-            else families_for_script(script)
+            else self.families
         )
         chosen = self.prefs.font_for(script)
         for combo, value in (
@@ -157,13 +168,13 @@ class FontsPage(QWidget):
         self.editor_size.setValue(chosen.editor_size)
         self.warning.setText(
             ""
-            if families
+            if self.families
             else self.tr(
                 "No installed font has the %1 script. Install one (for example a Noto font for "
                 "it), or the text will show as boxes."
             ).replace("%1", script)
         )
-        self.warning.setVisible(not families)
+        self.warning.setVisible(not self.families)
         self._update_sample()
 
     def _update_sample(self) -> None:
@@ -175,6 +186,24 @@ class FontsPage(QWidget):
         font.setPointSizeF(max(font.pointSizeF(), 12))
         self.sample.setFont(font)
         self.sample.setText(text)
+
+    def set_script(self, script: str) -> None:
+        self.script.setCurrentIndex(max(self.script.findData(script), 0))
+
+    def has_fonts(self) -> bool:
+        """Whether an installed font has the script (Latin always has one)."""
+        return self._current == "Latin" or bool(self.families)
+
+    def ensure_font(self) -> bool:
+        """Choose a suitable editor font for the script when none is chosen yet (its Noto font,
+        or another that has it); False when no installed font has the script."""
+        if not self.has_fonts():
+            return False
+        if not self.editor_font.currentData():
+            suggested = suggest_font(self._current, self.families)
+            if suggested:
+                self.editor_font.setCurrentIndex(max(self.editor_font.findData(suggested), 0))
+        return True
 
     def _store(self) -> None:
         self.prefs = self.prefs.with_font(
@@ -190,6 +219,63 @@ class FontsPage(QWidget):
     def preferences(self) -> Preferences:
         self._store()
         return self.prefs
+
+
+class LanguagePicker(QWidget):
+    """A searchable list of languages (autonym — English name (code)); first_item: an entry with
+    code "" at the top (e.g. "The system's language")."""
+
+    def __init__(
+        self,
+        langs: list[languages.Language],
+        current: str = "",
+        first_item: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.filter = QLineEdit(self)
+        self.filter.setPlaceholderText(self.tr("Search languages"))
+        self.filter.textChanged.connect(self._filter)
+        self.list = QListWidget(self)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.filter)
+        layout.addWidget(self.list, 1)
+        self.set_languages(langs, current, first_item)
+
+    def set_languages(
+        self, langs: list[languages.Language], current: str = "", first_item: str = ""
+    ) -> None:
+        self.list.clear()
+        if first_item:
+            item = QListWidgetItem(first_item)
+            item.setData(Qt.ItemDataRole.UserRole, "")
+            self.list.addItem(item)
+        for lang in langs:
+            item = QListWidgetItem(lang.label)
+            item.setData(Qt.ItemDataRole.UserRole, lang.code)
+            self.list.addItem(item)
+            if lang.code == current:
+                self.list.setCurrentItem(item)
+        if self.list.currentItem() is None and self.list.count():
+            self.list.setCurrentRow(0)
+        self._filter(self.filter.text())
+
+    def _filter(self, text: str) -> None:
+        needle = text.casefold().strip()
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            item.setHidden(bool(needle) and needle not in item.text().casefold())
+
+    def code(self) -> str:
+        item = self.list.currentItem()
+        return str(item.data(Qt.ItemDataRole.UserRole)) if item is not None else ""
+
+
+def all_languages() -> list[languages.Language]:
+    """Meta-Wiki's languages, by English name."""
+    data = languages.load()
+    return sorted(data.languages.values(), key=lambda x: (x.name.casefold(), x.code))
 
 
 class SettingsDialog(QDialog):
@@ -240,22 +326,11 @@ class SettingsDialog(QDialog):
 
         # language
         language = QWidget(self)
-        self.language_filter = QLineEdit(language)
-        self.language_filter.setPlaceholderText(self.tr("Search languages"))
-        self.language_filter.textChanged.connect(self._filter_languages)
-        self.languages = QListWidget(language)
-        system = QListWidgetItem(self.tr("The system's language"))
-        system.setData(Qt.ItemDataRole.UserRole, "")
-        self.languages.addItem(system)
-        data = languages.load()
-        for lang in sorted(data.languages.values(), key=lambda x: (x.name.casefold(), x.code)):
-            item = QListWidgetItem(lang.label)
-            item.setData(Qt.ItemDataRole.UserRole, lang.code)
-            self.languages.addItem(item)
-            if lang.code == prefs.language:
-                self.languages.setCurrentItem(item)
-        if not prefs.language:
-            self.languages.setCurrentRow(0)
+        self.language_picker = LanguagePicker(
+            all_languages(), prefs.language, self.tr("The system's language"), language
+        )
+        self.language_filter = self.language_picker.filter
+        self.languages = self.language_picker.list
         ll = QVBoxLayout(language)
         ll.addWidget(
             QLabel(
@@ -266,8 +341,7 @@ class SettingsDialog(QDialog):
                 language,
             )
         )
-        ll.addWidget(self.language_filter)
-        ll.addWidget(self.languages, 1)
+        ll.addWidget(self.language_picker, 1)
         self.tabs.addTab(language, self.tr("Language"))
 
         # fonts
@@ -347,14 +421,6 @@ class SettingsDialog(QDialog):
         if page in self.PAGES:
             self.tabs.setCurrentIndex(self.PAGES.index(page))
 
-    # -- language -----------------------------------------------------------------------------
-
-    def _filter_languages(self, text: str) -> None:
-        needle = text.casefold().strip()
-        for i in range(self.languages.count()):
-            item = self.languages.item(i)
-            item.setHidden(bool(needle) and needle not in item.text().casefold())
-
     # -- profiles -----------------------------------------------------------------------------
 
     def _fill_profiles(self) -> None:
@@ -404,11 +470,10 @@ class SettingsDialog(QDialog):
     def preferences(self) -> Preferences:
         prefs = self.fonts.preferences()
         checked = self.theme_group.checkedButton()
-        item = self.languages.currentItem()
         return replace(
             prefs,
             theme=str(checked.property("value")) if checked is not None else prefs.theme,
-            language=str(item.data(Qt.ItemDataRole.UserRole)) if item is not None else "",
+            language=self.language_picker.code(),
             on_load=str(self.on_load.currentData()),
             warn_on_exit=self.warn_on_exit.isChecked(),
             word_wrap=self.word_wrap.isChecked(),

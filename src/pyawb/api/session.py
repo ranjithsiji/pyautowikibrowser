@@ -21,7 +21,7 @@ text has no leftover HideText placeholders.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
@@ -36,7 +36,7 @@ from pyawb.api.models import (
     UserInfo,
     WatchOptions,
 )
-from pyawb.api.transport import Param, Transport
+from pyawb.api.transport import Cookie, Param, SecondFactor, Transport
 from pyawb.core import tools
 from pyawb.core.site import SiteConfig
 
@@ -65,7 +65,9 @@ class LoginException(ApiException):
 class Login(Protocol):
     """A transport that can log in (PywikibotTransport does)."""
 
-    def login(self, username: str, password: str) -> None: ...
+    def login(
+        self, username: str, password: str, second_factor: SecondFactor | None = None
+    ) -> None: ...
 
     def logout(self) -> None: ...
 
@@ -171,13 +173,29 @@ class WikiSession:
 
     # user and CheckPage -----------------------------------------------------------------------
 
-    def login(self, username: str, password: str) -> UserInfo:
-        """Log in with a bot password ("Name@BotName") or the main password, then check the
-        CheckPage again."""
+    def login(
+        self, username: str, password: str, second_factor: SecondFactor | None = None
+    ) -> UserInfo:
+        """Log in with a bot password ("Name@BotName") or the main password (second_factor
+        answers a two-factor prompt), then check the CheckPage again."""
         if not hasattr(self.transport, "login"):
             raise LoginException("this connection cannot log in")
         login: Login = self.transport  # type: ignore[assignment]
-        login.login(username, password)
+        if second_factor is None:
+            login.login(username, password)
+        else:
+            login.login(username, password, second_factor)
+        return self._logged_in(username)
+
+    def login_with_cookies(self, cookies: Iterable[Cookie], username: str) -> UserInfo:
+        """Log in with a session from the wiki's own login page (see Transport.adopt_cookies)."""
+        adopt = getattr(self.transport, "adopt_cookies", None)
+        if adopt is None:
+            raise LoginException("this connection cannot use a browser session")
+        adopt(cookies, username)
+        return self._logged_in(username)
+
+    def _logged_in(self, username: str) -> UserInfo:
         self.refresh_user()
         if not self.user.is_logged_in:
             raise LoginException(f"login as {username} failed")

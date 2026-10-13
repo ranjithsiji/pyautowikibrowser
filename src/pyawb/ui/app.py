@@ -20,8 +20,10 @@ from collections.abc import MutableMapping
 from PySide6.QtWidgets import QApplication
 
 from pyawb import __version__
+from pyawb.settings import appconfig
 from pyawb.ui import theme
 from pyawb.ui.main_window import MainWindow
+from pyawb.ui.start_screen import StartScreen
 
 
 def _locale_available(name: str) -> bool:
@@ -63,6 +65,15 @@ def run(argv: list[str]) -> int:
     app.setApplicationName("PyAutoWikiBrowser")
     app.setApplicationVersion(__version__)
     theme.apply(app)
+    try:
+        config = appconfig.load()
+    except (appconfig.ConfigError, OSError):
+        config = appconfig.AppConfig()  # the main window reports the problem
+    # the start screen asks what is needed first: language, wiki, fonts, login, pages
+    start = StartScreen(config)
+    if not start.exec():
+        return 0
     window = MainWindow()
+    window.adopt_start(start.result_value())
     window.show()
     return app.exec()
