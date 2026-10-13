@@ -387,15 +387,11 @@ class MainWindow(QMainWindow):
         file_menu.addAction(quit_action)
 
         list_menu = self.menuBar().addMenu(self.tr("&List"))
-        lm = self.list_maker
-        for text, slot in (
-            (self.tr("Remove duplicates"), lm.remove_duplicates),
-            (self.tr("Remove done pages"), lm.remove_done),
-            (self.tr("Clear current list"), lm.clear_list),
-        ):
-            a = QAction(text, self)
-            a.triggered.connect(slot)
-            list_menu.addAction(a)
+        for a in self.list_maker.list_menu_actions():
+            if a is None:
+                list_menu.addSeparator()
+            else:
+                list_menu.addAction(a)
 
         settings_menu = self.menuBar().addMenu(self.tr("&Settings"))
         for text, page, key in (
@@ -800,6 +796,8 @@ class MainWindow(QMainWindow):
             self.stop()
             return
         opts.mode = self.mode
+        # List ▸ Remove non-main space also skips redirects to other namespaces (AWB)
+        opts.filter_non_main_space = self.list_maker.articles.filter_non_main_auto
         self.start_tab.remember_summary()
         articles = self.list_maker.articles
         if not 0 <= index < len(articles):

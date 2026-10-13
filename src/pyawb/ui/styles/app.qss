@@ -161,6 +161,8 @@ QHeaderView::section {
     font-weight: bold;
     padding: 6px 8px;
 }
+/* lists of check boxes (List filter namespaces): room for the 18px indicator */
+QListView#checkList::item { min-height: 24px; padding-left: 2px; }
 QListView::item:hover, QTreeView::item:hover { background: $background_color_interactive_subtle__hover; }
 QListView::item:selected, QTreeView::item:selected, QTableView::item:selected {
     background: $background_color_progressive_subtle;

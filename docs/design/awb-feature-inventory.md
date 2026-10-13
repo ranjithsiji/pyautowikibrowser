@@ -5,6 +5,9 @@ Source: [Wikipedia:AutoWikiBrowser/User manual](https://en.wikipedia.org/wiki/Wi
 `AWB/Main.Designer.cs`, `WikiFunctions/Controls/Lists/ListMaker.cs`, `WikiFunctions/Lists/Providers/*`).
 
 Status: **done** · **partial** (what is missing in brackets) · **missing** · **n/a** (why).
+The [screenshots on Commons](#from-the-manuals-screenshots) add items the manual does not list; the
+[target menu bar](#target-menu-bar) and the [order of work](#order-of-work) are at the end.
+
 Phase: **A** menus, list and editor commands (next); **B** dialogs (advanced find & replace, template
 substitution, skip options, list filter, alerts, summaries); **C** tabs (History, What links here, Page logs,
 Typos, Disambig, Bots); **D** projects/settings files and start-up parameters; **E** tools (regex tester,
@@ -45,12 +48,12 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 ### List
 | Item | Status | Phase / notes |
 |---|---|---|
-| Keep alphabetized | missing | A |
-| Remove duplicates | done | as a command; A: AWB's "while lists are loaded" toggle |
-| Remove non-mainspace | partial (model only) | A |
-| Convert to / from talk pages | partial (`tools.convert_to_talk`) | A |
-| Filter… (namespaces, title contains/not, set operations with another list, sort, remove duplicates) | missing | B |
-| Save list… (text with wiki markup, plain, CSV, CSV with wiki markup) | missing | A |
+| Keep alphabetized (Ctrl+Shift+A) | done | |
+| Remove duplicates (Ctrl+Shift+U, a toggle as in AWB) | done | |
+| Remove non-mainspace (Ctrl+Shift+M; also skips redirects to other namespaces) | done | |
+| Convert to / from talk pages | done | |
+| Filter… (namespaces, title contains/not, set operations with another list, sort, remove duplicates) | done | `lists.listfilter`, `ui.list_dialogs`; set operations keep the list's order |
+| Save list… (text with wiki markup, plain, CSV, CSV with wiki markup) | done | |
 | Clear current list | done | |
 
 ### Plugins
@@ -132,22 +135,22 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 |---|---|---|
 | Categories on page (all / no hidden / only hidden) | done | |
 | Category, recurse 1 level, recursive | done | |
-| Category (recurse user-defined level) | partial (engine has depth) | A |
-| Checkwiki error (URL), Checkwiki error (number) | missing | A |
+| Category (recurse user-defined level) | done | levels box next to the input instead of AWB's dialog |
+| Checkwiki error (URL), Checkwiki error (number) | done | the number uses the wiki id (AWB: language + "wiki") |
 | Database dump | missing | E |
 | Files on page, Image file links, Links on page (all / blue / red), Transclusions on page | done | |
 | Google search | n/a for now | Google's page scraping is blocked; needs an API key |
-| HTML scraper, HTML scraper (advanced regex) | missing | A |
+| HTML scraper, HTML scraper (advanced regex) | done | fetched through `api.web` (our User-Agent); AWB's inverted "Case sensitive" fixed |
 | My watchlist, New pages, Pages with a page property, Random pages | done | |
 | Special page (dialog: source + namespace) | done differently | each special page is its own source with a namespace box |
 | Text file (UTF-8 / Windows-1252) | done | |
-| User contribs; (user defined number) | partial (number) | A |
+| User contribs; (user defined number) | done | |
 | What links here (all variants), What redirects here, What transcludes page | done | |
 | Wiki search (text / title, all NS) | done | |
 | (PyAWB) Manual list, Wikidata query (SPARQL), pywikibot page generators | done | |
 | Multiple values with `\|` | done | |
-| Make list appends; stop button while making | partial (no stop) | A |
-| Add (text box + "+"), Remove, Filter | partial (Add via Manual list; no Filter) | A/B |
+| Make list appends; stop button while making | done | |
+| Add (text box + "+"), Remove, Filter | done | |
 
 ## Tabs
 
@@ -187,12 +190,12 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 
 | Menu / item | Status | Phase / notes |
 |---|---|---|
-| List: open page / history in browser (Ctrl+Alt+P / H) | missing | A |
-| List: cut, copy, paste (newlines or commas) | missing | A |
-| List: select all / none / inverse | missing | A |
-| List: remove selected / all / duplicates / non-main | partial (buttons) | A |
-| List: add selected from list ▸ (links, categories, transclusions… of the selected pages) | missing | A |
-| List: move to top / bottom; convert to/from talk; filter; save; sort (reverse) alphabetically | missing | A |
+| List: open page / history in browser (Ctrl+Shift+P / H), double click opens the page | done | asks first for 10 or more pages |
+| List: cut, copy, paste (newlines or \|) | done | |
+| List: select all / none / inverse | done | no Ctrl+D for none: it is Diff |
+| List: remove selected / all / duplicates / non-main | done | |
+| List: add selected from list ▸ (links, categories, transclusions… of the selected pages) | done | |
+| List: move to top / bottom; convert to/from talk; filter; save; sort (reverse) alphabetically | done | |
 | Edit box: word wrap, undo, cut, copy, paste, select all | partial (Qt's own menu) | A |
 | Edit box: paste more, save text to file, go to line | missing | A |
 | Edit box: insert ▸ (birth/death categories, category Ctrl+T), insert tag ▸ (DEFAULTSORT, disambig, wikify, cleanup, expand, speedy delete, clear, uncategorised, stub) | missing | A |
@@ -203,10 +206,103 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | History: open in browser, refresh | missing | C |
 | Logs: add selected to list, cut, copy, remove, select all/none, open page/diff/history in browser, clear, reset; skipped: filter (exclude) by reason | missing | A |
 
+## From the manual's screenshots
+
+Source: the 73 images in [Commons: Category:AutoWikiBrowser user manual project](https://commons.wikimedia.org/wiki/Category:AutoWikiBrowser_user_manual_project)
+and its subcategories (read 2026-10-14), checked against the menu trees in `AWB/Main.Designer.cs`,
+`WikiFunctions/Controls/Lists/ListMaker.Designer.cs` and `WikiFunctions/Logging/LogControl.Designer.cs`.
+These items were missing from the tables above.
+
+| Where | Item | Status | Phase / notes |
+|---|---|---|---|
+| Diff | Single click on a line focuses the edit box there; **double click undoes all changes on that line** | partial (single click) | A |
+| Diff | Persian AWB mirrors the whole window and the diff in RTL | done | `diffhtml` mirrors, Qt layout direction |
+| Toolbar | Show/hide control panel and show/hide parameters buttons; Delete (admins); False positive | missing | A (panel), C (delete) |
+| Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | partial (no timer, no notifications) | A |
+| View | Show toolbar, Show control panel, Enlarge edit box, Show edit box toolbar, Display false positives button | missing | A |
+| List context | Format page titles per displaytitle | done | italics, bold, sub, sup (AWB: italics only); looked up with `api.pageinfo` |
+| List context | Select ▸ All (Ctrl+A) / None / Inverse (Ctrl+Shift+I); Remove ▸ Selected / All / Duplicates / Non-main space | done | |
+| List menu | Shortcuts: Keep alphabetized Ctrl+Shift+A, Remove duplicates Ctrl+Shift+U, Remove non-main Ctrl+Shift+M, Filter Ctrl+Shift+F | done | |
+| List box | Text box + "+" button to add one title; page count; Remove; Filter | done | |
+| Logs context | Open diff in browser (Ctrl+Shift+D); Filter: Show only / Exclude (selected reasons) | missing | A |
+| Logging to file tab | Log to XHTML / wiki code, verbose, folder; upload logs to a wiki page (location `$USER/Logs`, category, job name, max lines, watch, open in browser); status | missing | D |
+| Edit box menu | Paste more ▸ 10 slots (Ctrl+1…Ctrl+0) + Configure…; Go to line ▸ text box; Insert tag ▸ `{{-stub}}` box | missing | A |
+| Edit box | Custom toolbar buttons added by plugins and modules (Persian screenshot) | missing | E |
+| Options menu | Use pre-parse mode Ctrl+Shift+E | missing | A |
+| Tools | C# Eval (run a snippet against the page) → Python console | missing | E |
+| Tray | Minimize to tray menu: Show / Hide / Exit | missing | A |
+| Profiles dialog | Table ID / user / password saved? / default settings file / notes; Login, Add, Edit, Delete; quick login with "save this account / password" | done differently | start screen + Settings → User profiles; per-profile default project: D |
+| Disambig tab | Enable, link to disambiguate + Load links (variants from the disambiguation page), variants box, skip when none made, ± context characters | missing | C |
+| Bots tab | Auto save, max edits, delay between edits, suppress "using AWB"; nudge timer (resave if stuck, total nudges, reset, skip if first nudge fails); auto shutdown (shutdown/standby/restart/hibernate) | missing | C |
+| Find & Replace dialog | row indicator column, Search + Go; links to the regex help | partial (no Search) | B |
+| Replace Special | New / Rule menus, up/down arrows to reorder, New rule / New subrule / Delete, Find/If tabs | missing UI | B |
+| Skip if no… | Check all/none + 10 boxes (title boldened, external link bulleted, bad links fixed, unicodification, auto tag changes, header error fixed, DEFAULTSORT added, user talk templates subst'd, citation dates fixed, human category changes) | missing UI | B |
+| List filter | Namespaces (content + talk columns, all content / all talk), title remove/keep containing (+regex), sort, remove duplicates, set operations (difference, intersection) with another list (open file, paste, clear) | done | |
+| Regex tester | Find, Replace, text, result; MultiLine/SingleLine/IgnoreCase/ExplicitCapture | missing | E |
+| External processing | Enabled, skip if no change, program, arguments, I/O file, pass text as file or as parameter | missing | E |
+| Module | Enabled + "No module loaded" state, language, Make module, built-at time, fixed width font, template text | missing | E (Python) |
+| List comparer | Two list makers, Compare, unique 1 / common / unique 2 with counts, Save list / Use list each, Clear all | missing | E |
+| List splitter | List maker, pages per file, save to text files / to settings (project) files | missing | E |
+| DB scanner | Text tab page properties (not counted / at least / at most, ignore redirects); Restriction: unlock move permissions; thread priority | missing | E |
+| Plugin manager | Plugin menu, count, list of loaded plugins | missing | E |
+| Splash | Start-up splash | n/a | the start screen replaces it |
+
+## Target menu bar
+
+AWB's "settings files" are PyAWB **projects** (TOML, with an importer for AWB's XML), so the File menu says
+"project". Settings (theme, language, fonts, profiles, preferences) stay in PyAWB's own Settings menu; AWB's
+Options ▸ Preferences… opens the same dialog.
+
+```
+File     New project (reset to defaults) · Open project… · Recent projects ▸ · Import AWB settings… |
+         Save project (Ctrl+S is Save page, so none) · Save project as… · Save as default |
+         Log in/Profiles… Ctrl+L · Log out · Refresh status/typos Ctrl+R | Exit Ctrl+Q
+View     Show toolbar · Show control panel F11 · Enlarge edit box F10 · Show edit box toolbar ·
+         Show the diff pane | Display false positives button
+List     Keep alphabetized Ctrl+Shift+A · Remove duplicates Ctrl+Shift+U · Remove non-main space Ctrl+Shift+M |
+         Convert to talk pages · Convert from talk pages | Filter… Ctrl+Shift+F · Save list… · Clear current list
+Plugins  Load… · Manager… | (one entry per loaded plugin)
+Options  Preferences… Ctrl+P · Default edit summaries… · Auto save project every 10 pages ·
+         Use pre-parse mode Ctrl+Shift+E | Follow redirects · Apply changes automatically |
+         Auto focus end of the edit box · Do not use section edit summaries · Restrict DEFAULTSORT change/addition ·
+         Restrict orphan tag addition to linkless pages · Do not apply WP:MOS fixes · Highlight syntax ·
+         Highlight Find matches · Highlight errors | Mark all as minor · Watchlist ▸ | Sort interwiki links ·
+         Replace reference tags
+Tools    Make module Ctrl+M · External processing Ctrl+E | Python console | Regex tester Ctrl+Shift+T ·
+         Database scanner Ctrl+Shift+D · List comparer · List splitter | Reset saved/skipped counts |
+         Profile typos · Invalidate cache
+Settings Theme… · Language… · Fonts… · User profiles… · Preferences…
+Help     Help F1 · Check for updates · About
+```
+
 ## Order of work
 
-A (this and the next steps), then B, C, D, E. Each batch is ported from AWB's code with its tests where AWB
-has them, and checked in the running app.
+Each step reads the manual chapter(s) named in its row and the AWB source files behind it, and ports that code (with its NUnit tests where AWB has them), keeps logic out of `ui/`
+(models in `lists/`, `editor/`, `core/`, `rules/`), adds pytest-qt tests for the UI, and is checked in the
+running app with screenshots. One commit per step.
+
+| Step | Contents | AWB sources | Manual chapters to meet |
+|---|---|---|---|
+| A1 ✔ | **List**: List menu with shortcuts; list context menu (open page/history, cut/copy/paste, Select ▸, Remove ▸, Add selected to list from ▸, move to top/bottom, convert to/from talk, displaytitle, filter, save list in 4 formats, sort/reverse sort); keep alphabetized; add-one-title box; stop while making a list; missing sources (category user depth, user contribs with number, HTML scraper plain/advanced regex, CheckWiki URL/number) | `ListMaker.cs`, `ListBox2.cs`, `Lists/Providers/*` | User manual: Make list, list menus |
+| A2 | **Edit box**: context menu (word wrap, paste more + configure, save text to file, go to line, insert ▸ birth/death cats and category Ctrl+T, insert tag ▸, convert list to `*`/`#`, unicodify selected, bypass all redirects, fix all excess whitespace, re-parse F5, comment selected Ctrl+K, open page/talk/history/selection in browser, replace with last edit, undo all changes); diff double click undoes a line | `Main.cs` (mnuTextBox handlers), `ConfigurePasteMoreItems.cs`, `Tools.cs` | Find and replace: minor rules not applied on Re-parse; Regular expression: shortcut editing macros run by Re-parse |
+| A3 | **Options menu** (all toggles wired to `ProcessOptions`/engine flags), pre-parse mode, apply changes automatically, highlight Find matches/errors, auto focus end; **View menu** (toolbar, control panel F11, enlarge edit box F10, edit box toolbar, false positives); Tools ▸ reset counts, invalidate cache; Help F1; status bar timer and talk-page notifications; tray; Start tab Delink selection, false positive button, Ctrl+G/Esc | `Main.cs`, `Article.cs` alerts | General fixes: the Options menu switches (restrict DEFAULTSORT, orphan tagging, MOS fixes, sort interwikis, reference tags) |
+| A4 | **Skip tab** extras (spam filter blocked, only cosmetic changes, no alerts, exists/doesn't/don't care radio); **Logs** context menu (add to list, cut/copy, remove, select, open page/diff/history, filter show only/exclude, clear, reset) | `LogControl.cs`, `Main.cs` skip checks | User manual: Skip tab, Logs |
+| B1 ✔ | **List filter** dialog (namespaces, title, set operations, sort, duplicates) | `ListFilterForm.cs` | Database Scanner: results Filter uses the same dialog |
+| B2 | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |
+| B3 | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
+| C1 | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
+| C2 | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
+| C3 | Admin actions **Watch/Unwatch, Move, Protect, Delete** (+ "using AWB" summaries) and bypass all redirects | `ArticleActionDialog.cs`, `Article.cs` | User manual: Start tab admin buttons |
+| C4 | **Bots** tab: auto save with delay, max edits, nudge timer, auto shutdown (bot accounts per CheckPage only) | `Main.cs` bot mode, `NudgeTimer.cs`, `ShutdownNotification.cs` | User manual: Bots |
+| D1 | **Projects**: save/open/recent/default/reset (TOML, page list optionally), auto save every 10 pages, start-up `--project`/`--profile`, AWB settings XML import | `UserSettings.cs`, `UserPrefs.cs` | Find and replace: rules saved with the settings file |
+| D2 | **Logging to file** (XHTML/wikitext logs, optional upload to the wiki) | `Logging/*` | User manual: Logging to file |
+| E1 | **Regex tester**, **List comparer**, **List splitter**, **External processing** | `Extras/*`, `ListComparer.cs`, `ListSplitter.cs`, `ExternalProgram.cs` | Regular expression: the tester |
+| E2 | **Database scanner** (dump reader in worker processes, all tabs) and the "Database dump" source | `Extras/DBScanner/*` | Database Scanner: every tab, AWB-specific checks, Convert, performance (worker processes) |
+| E3 | **Custom Python modules** (Make module), Python console, **plugins** (load, manager, toolbar buttons), Profile typos | `CustomModule.cs`, `CSharpEval.cs`, `PluginManager.cs` | User manual: Tools, Plugins |
+| F | Packaging, check for updates | | |
+
+Not ported: Submit stats / Usage statistics / Privacy (PyAWB sends no usage data), Google search (needs an
+API key), splash screen (start screen instead).
 
 ## Manual chapters
 

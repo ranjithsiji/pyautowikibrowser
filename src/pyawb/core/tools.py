@@ -795,6 +795,26 @@ def convert_namespace(title: str, new_namespace: int) -> str:
     return site.namespaces[new_namespace] + remove_namespace_string(title)
 
 
+def url_index() -> str:
+    """Variables.URLIndex: the wiki's index.php."""
+    return current_site().url_long + "index.php"
+
+
+def non_prettified_url(title: str) -> str:
+    """Variables.NonPrettifiedURL: index.php?title=… for a page."""
+    return url_index() + "?title=" + wiki_encode(title)
+
+
+def get_article_history_url(title: str) -> str:
+    """Variables.GetArticleHistoryURL."""
+    return non_prettified_url(title) + "&action=history"
+
+
+def get_edit_url(title: str) -> str:
+    """Variables.GetEditURL."""
+    return non_prettified_url(title) + "&action=edit"
+
+
 def filter_some_articles(titles: Iterable[str]) -> list[str]:
     """Drop special pages, MediaWiki: pages and Commons: titles; deduplicate."""
     items: list[str] = []

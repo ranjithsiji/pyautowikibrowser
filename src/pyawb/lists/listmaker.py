@@ -16,7 +16,9 @@ selection, and comparing two lists. The Qt list view in ui/ shows one of these."
 
 from __future__ import annotations
 
+import enum
 from collections.abc import Iterable, Iterator, Sequence
+from pathlib import Path
 
 from pyawb.core import tools
 from pyawb.core.article import Article
@@ -37,6 +39,7 @@ class ArticleList:
         self._selected: set[int] = set()
         self.filter_duplicates = False  # don't add pages already in the list
         self.filter_non_main_auto = False  # only add mainspace pages
+        self.auto_alpha = False  # keep alphabetized (List ▸ Keep alphabetized)
 
     # -- adding --------------------------------------------------------------------------------
 
@@ -61,6 +64,8 @@ class ArticleList:
             existing = set(self.items)
             new = [a for a in _distinct(new) if a not in existing]
         self.items.extend(new)
+        if self.auto_alpha:  # ListMaker.UpdateNumberOfArticles(true)
+            self.sort()
 
     @staticmethod
     def normalize_title(s: str) -> str:
@@ -106,6 +111,25 @@ class ArticleList:
     def get_article_list(self) -> list[Article]:
         return list(self.items)
 
+    def sort(self, reverse: bool = False) -> None:
+        """ListBox2.Sort / ReverseSort: MediaWiki's order (Article.compare_to). The selection
+        follows the pages it was on."""
+        chosen = {id(self.items[i]) for i in self._selected}
+        self.items.sort(reverse=reverse)  # stable, as only equal names tie
+        self._selected = {i for i, a in enumerate(self.items) if id(a) in chosen}
+
+    def convert_to_talk_pages(self) -> None:
+        """ListMaker.ConvertToTalkPages: each page's talk page, added back through add()."""
+        titles = tools.convert_to_talk_list(a.name for a in self.items)
+        self.clear()
+        self.add([Article(t) for t in titles])
+
+    def convert_from_talk_pages(self) -> None:
+        """ListMaker.ConvertFromTalkPages."""
+        titles = tools.convert_from_talk_list(a.name for a in self.items)
+        self.clear()
+        self.add([Article(t) for t in titles])
+
     # -- selection -----------------------------------------------------------------------------
 
     def set_selected(self, index: int, selected: bool) -> None:
@@ -118,6 +142,34 @@ class ArticleList:
 
     def get_selected_article_list(self) -> list[Article]:
         return [self.items[i] for i in sorted(self._selected)]
+
+    @property
+    def selected_indices(self) -> list[int]:
+        return sorted(self._selected)
+
+    def select_all(self) -> None:
+        self._selected = set(range(len(self.items)))
+
+    def select_none(self) -> None:
+        self._selected = set()
+
+    def invert_selection(self) -> None:
+        self._selected = set(range(len(self.items))) - self._selected
+
+    def copy_text(self) -> str:
+        """Tools.Copy(ListBox): the selected titles, one per line."""
+        return "\n".join(a.name for a in self.get_selected_article_list()).strip()
+
+    def move_selected(self, to_top: bool) -> None:
+        """ListMaker.MoveSelectedItems: the selected pages, in their order, to the top or the
+        bottom (the instances selected, not earlier duplicates). They stay selected."""
+        moving = self.get_selected_article_list()
+        if not moving:
+            return
+        rest = [a for n, a in enumerate(self.items) if n not in self._selected]
+        self.items = moving + rest if to_top else rest + moving
+        start = 0 if to_top else len(rest)
+        self._selected = set(range(start, start + len(moving)))
 
     @property
     def selected_index(self) -> int:
@@ -206,6 +258,40 @@ class ArticleList:
         self._selected.clear()
         self.items.insert(position, new)
         self._selected.add(position)
+
+
+class OutputFormat(enum.IntEnum):
+    """ListBox2.OutputFormat: the Save list formats, in the dialog's filter order."""
+
+    WIKI_TEXT = 1  # "# [[:Title]]" lines
+    PLAIN_TEXT = 2
+    CSV = 3  # "a, b"
+    CSV_WIKI_TEXT = 4  # "[[:a]], [[:b]]"
+
+
+SAVE_FILTERS: dict[OutputFormat, str] = {
+    OutputFormat.WIKI_TEXT: "Text file with wiki markup (*.txt)",
+    OutputFormat.PLAIN_TEXT: "Plaintext list (*.txt)",
+    OutputFormat.CSV: "CSV (Comma Separated Values) (*.txt)",
+    OutputFormat.CSV_WIKI_TEXT: "CSV with Wikitext (*.txt)",
+}
+
+
+def format_list(articles: Iterable[Article], fmt: OutputFormat) -> str:
+    """ListBox2.SaveList's text (AppendLine ends lines with a newline; the CSV forms have none)."""
+    names = [a.name for a in articles]
+    if fmt is OutputFormat.WIKI_TEXT:
+        return "".join(f"# [[:{n}]]\n" for n in names)
+    if fmt is OutputFormat.PLAIN_TEXT:
+        return "".join(f"{n}\n" for n in names)
+    if fmt is OutputFormat.CSV:
+        return ", ".join(names)
+    return ", ".join(f"[[:{n}]]" for n in names)
+
+
+def save_list(articles: Iterable[Article], path: Path, fmt: OutputFormat) -> None:
+    """Write the list as UTF-8 (Tools.WriteTextFileAbsolutePath)."""
+    path.write_text(format_list(articles, fmt), encoding="utf-8", newline="\n")
 
 
 def compare_lists(

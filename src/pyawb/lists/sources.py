@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from pyawb.api.sparql import Sparql
 from pyawb.api.transport import Transport
+from pyawb.api.web import PywikibotWebFetcher, WebFetcher
 from pyawb.lists import providers as P
 from pyawb.lists.pagegenerators import PagegeneratorsListProvider
 from pyawb.lists.wikidataquery import WikidataQueryListProvider
@@ -52,7 +53,23 @@ class Source:
 
     @property
     def needs_wiki(self) -> bool:
-        return not issubclass(self.provider, (P.ManualListProvider, P.TextFileListProvider))
+        return not issubclass(
+            self.provider,
+            (
+                P.ManualListProvider,
+                P.TextFileListProvider,
+                P.HTMLPageScraperListProvider,
+                P.AdvancedRegexHtmlScraper,
+            ),
+        ) or issubclass(self.provider, P.CheckWikiWithNumberListProvider)
+
+    @property
+    def option(self) -> P.NumberOption | None:
+        return self.provider.option
+
+    @property
+    def is_web(self) -> bool:
+        return self.provider in P.WEB_PROVIDERS
 
     @property
     def takes_namespace(self) -> bool:
@@ -89,12 +106,20 @@ SOURCES: Sequence[Source] = tuple(
     for p in (
         P.ManualListProvider,
         *P.API_PROVIDERS,
+        *P.WEB_PROVIDERS,
         WikidataQueryListProvider,
         PagegeneratorsListProvider,
         P.TextFileListProvider,
         P.TextFileListProviderWindows1252,
     )
 )
+
+
+ADD_FROM_SELECTED: Sequence[Source] = tuple(
+    s for s in SOURCES if s.provider in P.API_PROVIDERS and s.input is Input.LINE
+)
+"""Sources for the list's "Add selected to list from ▸" menu: those that take page names (AWB
+offers every provider with an input box except the web ones)."""
 
 
 def source(name: str) -> Source:
@@ -114,15 +139,44 @@ class WikiContext:
     site_id: str = ""  # siteinfo wikiid, e.g. "mlwiki"
     article_url: str = ""  # with $1
     pywikibot_site: Any = None
+    web: WebFetcher | None = None
 
 
 class SourceUnavailable(ValueError):
     """The source needs something the connection does not have (log in first, ...)."""
 
 
-def build(src: Source, wiki: WikiContext | None, namespace: int | None = None) -> P.ListProvider:
-    """A provider for src on the connected wiki (namespace: for sources that take one)."""
+def build(
+    src: Source,
+    wiki: WikiContext | None,
+    namespace: int | None = None,
+    option: int | None = None,
+    settings: Mapping[str, object] | None = None,
+) -> P.ListProvider:
+    """A provider for src on the connected wiki. namespace: for sources that take one; option:
+    the source's NumberOption value (clamped to its range); settings: other provider fields
+    (the advanced HTML scraper's pattern and options)."""
+    provider = _build(src, wiki, namespace)
+    if src.option is not None:
+        value = src.option.default if option is None else option
+        value = max(src.option.minimum, min(src.option.maximum, value))
+        setattr(provider, src.option.field, value)
+    for name, value in (settings or {}).items():
+        if not hasattr(provider, name):
+            raise AttributeError(f"{type(provider).__name__} has no setting {name!r}")
+        setattr(provider, name, value)
+    return provider
+
+
+def _build(src: Source, wiki: WikiContext | None, namespace: int | None) -> P.ListProvider:
     cls = src.provider
+    if src.is_web:
+        web = (wiki.web if wiki else None) or PywikibotWebFetcher()
+        if cls is P.CheckWikiWithNumberListProvider:
+            if wiki is None:
+                raise SourceUnavailable("connect to a wiki first")
+            return P.CheckWikiWithNumberListProvider(web, site_id=wiki.site_id)
+        return cls(web)  # pyright: ignore[reportCallIssue]
     if cls is P.ManualListProvider:
         return P.ManualListProvider()
     if issubclass(cls, P.TextFileListProvider):

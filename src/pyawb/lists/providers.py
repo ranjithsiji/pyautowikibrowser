@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from pyawb.api.transport import Param, Transport
+from pyawb.api.web import WebFetcher
 from pyawb.core import tools
 from pyawb.core.article import Article
 from pyawb.core.rx import DotNetOptions, DotNetRegex
@@ -111,6 +112,18 @@ def api_make_list(
     return out
 
 
+@dataclass(frozen=True)
+class NumberOption:
+    """A number the source needs besides its criteria (AWB asked for it in a LevelNumber dialog
+    when the list was made; PyAWB shows a box next to the input). field: the provider attribute."""
+
+    label: str
+    field: str
+    default: int
+    minimum: int
+    maximum: int
+
+
 class ListProvider:
     """IListProvider: make a list of pages from search criteria."""
 
@@ -119,6 +132,7 @@ class ListProvider:
     user_input_enabled: ClassVar[bool] = True
     strip_url: ClassVar[bool] = False  # criteria may be pasted page URLs
     namespaces_enabled: ClassVar[bool] = False  # takes a namespace (special page providers)
+    option: ClassVar[NumberOption | None] = None
 
     def make_list(self, *criteria: str) -> list[Article]:
         raise NotImplementedError
@@ -228,6 +242,15 @@ class CategoryRecursiveListProvider(CategoryListProvider):
 @dataclass
 class CategoryRecursiveOneLevelListProvider(CategoryRecursiveListProvider):
     display_text: ClassVar[str] = "Category (recurse 1 level)"
+    depth: int = 1
+
+
+@dataclass
+class CategoryRecursiveUserDefinedLevelListProvider(CategoryRecursiveListProvider):
+    display_text: ClassVar[str] = "Category (recurse user defined level)"
+    option: ClassVar[NumberOption | None] = NumberOption(
+        "Levels:", "depth", 1, 1, CategoryRecursiveListProvider.MAX_DEPTH
+    )
     depth: int = 1
 
 
@@ -514,6 +537,16 @@ class UserContribsListProvider(ApiListProvider):
                 params["ucnamespace"] = self.namespace
             out.extend(self._run(params, _list_items("usercontribs"), len(out)))
         return out
+
+
+@dataclass
+class UserContribUserDefinedNumberListProvider(UserContribsListProvider):
+    display_text: ClassVar[str] = "User contribs (user defined number)"
+    # AWB's dialog started at 1; 100 is a more useful start
+    option: ClassVar[NumberOption | None] = NumberOption(
+        "Number of contribs:", "number_of_edits", 100, 1, 25000
+    )
+    number_of_edits: int | None = 100
 
 
 @dataclass
@@ -853,6 +886,7 @@ class TextFileListProviderWindows1252(TextFileListProvider):
 
 
 _PasteSplit = DotNetRegex(r"\r\n|\n|\|")
+_PasteLines = DotNetRegex(r"\r\n|\n")
 
 
 def titles_from_paste(text: str) -> list[Article]:
@@ -880,10 +914,141 @@ class ManualListProvider(ListProvider):
         return [a for c in criteria for a in titles_from_paste(c)]
 
 
+# web pages (NonMWListProviders.cs, AdvancedRegexHtmlScraper.cs) ---------------------------------
+
+_Apostrophe = DotNetRegex(r"&#0?39;|&#146;|&amp;#0?39;|&amp;#146;|[`’]")
+
+
+def _url_built(url: str) -> str:
+    return url if "http" in url else "http://" + url
+
+
+@dataclass
+class HTMLPageScraperListProvider(ListProvider):
+    """Each line of a web page's <body> is a title (lines starting with <h1> left out)."""
+
+    display_text: ClassVar[str] = "HTML Scraper"
+    user_input_text: ClassVar[str] = "URL:"
+
+    web: WebFetcher
+
+    def make_list(self, *criteria: str) -> list[Article]:
+        from pyawb.core import wikiregexes
+
+        out: list[Article] = []
+        for url in criteria:
+            url_built = _url_built(url.strip())
+            if not wikiregexes.UrlValidator.is_match(url_built):
+                raise ValueError(f'Url "{url_built}" is not valid')
+            body = tools.string_between(self.web.get_html(url_built), "<body>", "</body>")
+            for entry in _PasteLines.split(body):
+                if entry and self.check_extra(entry):
+                    out.append(Article(self.modify_article_name(entry)))
+        return out
+
+    def check_extra(self, entry: str) -> bool:
+        return not entry.lower().startswith("<h1>")
+
+    def modify_article_name(self, title: str) -> str:
+        from pyawb.core.parsers.parsers import Parsers
+
+        title = Parsers().unicodify(title)
+        title = title.replace("&amp;", "&").replace("&quot;", '"')
+        return title.replace("<br />", "")
+
+
+@dataclass
+class CheckWikiListProvider(HTMLPageScraperListProvider):
+    """A CheckWiki output page ("view=bots": titles one per line inside <pre>)."""
+
+    display_text: ClassVar[str] = "CheckWiki error"
+
+    def check_extra(self, entry: str) -> bool:
+        low = entry.lower()
+        return not (low.startswith("<pre>") or low.endswith("</pre>"))
+
+    def modify_article_name(self, title: str) -> str:
+        return _modify_scraped(title)
+
+
+CHECKWIKI_URL = "https://checkwiki.toolforge.org/cgi-bin/checkwiki.cgi"
+
+
+@dataclass
+class CheckWikiWithNumberListProvider(CheckWikiListProvider):
+    """CheckWiki error numbers on this wiki. site_id: siteinfo wikiid ("mlwiki"); AWB built it
+    from the language code + "wiki", which is wrong outside Wikipedia."""
+
+    display_text: ClassVar[str] = "CheckWiki error (number)"
+    user_input_text: ClassVar[str] = "Error number:"
+
+    site_id: str = ""
+
+    def make_list(self, *criteria: str) -> list[Article]:
+        project = self.site_id or current_site().lang_code + "wiki"
+        out: list[Article] = []
+        for number in criteria:
+            url = f"{CHECKWIKI_URL}?project={project}&view=bots&id={number.strip()}&offset=0"
+            out.extend(super().make_list(url))
+        return out
+
+
+@dataclass
+class AdvancedRegexHtmlScraper(ListProvider):
+    """Titles are a regex group of every match in a web page. AWB asked for the regex in a dialog
+    when the list was made; here the UI fills pattern and options first. AWB's "Case sensitive"
+    box set IgnoreCase (a slip); here it means case sensitive."""
+
+    display_text: ClassVar[str] = "HTML Scraper (advanced regex)"
+    user_input_text: ClassVar[str] = "URL:"
+
+    web: WebFetcher
+    pattern: str = ""
+    case_sensitive: bool = False
+    singleline: bool = False
+    multiline: bool = False
+    group: int = 1
+
+    def regex(self) -> DotNetRegex:
+        opts = DotNetOptions.NONE
+        if not self.case_sensitive:
+            opts |= DotNetOptions.IGNORE_CASE
+        if self.singleline:
+            opts |= DotNetOptions.SINGLELINE
+        if self.multiline:
+            opts |= DotNetOptions.MULTILINE
+        return DotNetRegex(self.pattern, opts)
+
+    def make_list(self, *criteria: str) -> list[Article]:
+        rx = self.regex()
+        out: list[Article] = []
+        for url in criteria:
+            for m in rx.matches(self.web.get_html(_url_built(url.strip()))):
+                value = m.group(self.group)
+                if value:
+                    out.append(Article(_modify_scraped(value)))
+        return out
+
+
+def _modify_scraped(title: str) -> str:
+    title = _Apostrophe.replace(title, "'")
+    title = title.replace("&amp;", "&").replace("&quot;", '"')
+    return title.replace("<br />", "")
+
+
+WEB_PROVIDERS: Sequence[type[ListProvider]] = (
+    HTMLPageScraperListProvider,
+    AdvancedRegexHtmlScraper,
+    CheckWikiListProvider,
+    CheckWikiWithNumberListProvider,
+)
+
+
 API_PROVIDERS: Sequence[type[ApiListProvider]] = (
     CategoryListProvider,
     CategoryRecursiveListProvider,
     CategoryRecursiveOneLevelListProvider,
+    CategoryRecursiveUserDefinedLevelListProvider,
     CategoriesOnPageListProvider,
     CategoriesOnPageNoHiddenListProvider,
     CategoriesOnPageOnlyHiddenListProvider,
@@ -904,6 +1069,7 @@ API_PROVIDERS: Sequence[type[ApiListProvider]] = (
     TransclusionsOnPageListProvider,
     ImageFileLinksListProvider,
     UserContribsListProvider,
+    UserContribUserDefinedNumberListProvider,
     MyWatchlistListProvider,
     WikiSearchListProvider,
     WikiSearchAllNSListProvider,
