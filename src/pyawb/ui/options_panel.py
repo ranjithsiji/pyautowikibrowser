@@ -12,18 +12,19 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -70,13 +71,13 @@ class _ContainsRow(QWidget):
         self.regex = QCheckBox(self.tr("Regex"), self)
         self.case = QCheckBox(self.tr("Case sensitive"), self)
         self.after = QCheckBox(self.tr("After processing"), self)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self.enabled)
-        row.addWidget(self.text, 1)
-        row.addWidget(self.regex)
-        row.addWidget(self.case)
-        row.addWidget(self.after)
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.addWidget(self.enabled, 0, 0)
+        grid.addWidget(self.text, 0, 1, 1, 3)
+        grid.addWidget(self.regex, 1, 1)
+        grid.addWidget(self.case, 1, 2)
+        grid.addWidget(self.after, 1, 3)
 
     def check(self, negate: bool) -> ContainsCheck | None:
         text = self.text.text()
@@ -89,6 +90,16 @@ class _ContainsRow(QWidget):
         except Exception as e:  # regex.error, UnsupportedPatternError
             raise OptionsError(f"{text}: {e}") from e
         return ContainsCheck(text, comparer, negate=negate, after=self.after.isChecked())
+
+
+def _scrolled(page: QWidget) -> QScrollArea:
+    """A tab's page that scrolls when the panel is narrower or shorter than it."""
+    area = QScrollArea()
+    area.setWidget(page)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    return area
 
 
 class OptionsPanel(QTabWidget):
@@ -127,7 +138,6 @@ class OptionsPanel(QTabWidget):
             self.ignore_nobots,
         ):
             general.addWidget(w)
-        general.addStretch(1)
 
         far = QGroupBox(self.tr("Find and replace"), options)
         self.find_replace = QCheckBox(self.tr("Find and replace"), far)
@@ -142,7 +152,6 @@ class OptionsPanel(QTabWidget):
         fl.addWidget(self.far_count, 1, 0, 1, 2)
         fl.addWidget(self.skip_no_far, 2, 0, 1, 2)
         fl.addWidget(self.skip_minor_far, 3, 0, 1, 2)
-        fl.setRowStretch(4, 1)
 
         typos = QGroupBox(self.tr("Typo fixing"), options)
         self.fix_typos = QCheckBox(self.tr("Fix typos (RegExTypoFix)"), typos)
@@ -155,11 +164,13 @@ class OptionsPanel(QTabWidget):
             tl.addWidget(w)
         tl.addStretch(1)
 
-        row = QHBoxLayout(options)
-        row.addLayout(general, 1)
-        row.addWidget(far, 1)
-        row.addWidget(typos, 1)
-        self.addTab(options, self.tr("Options"))
+        # one narrow column, as AWB's control panel
+        column = QVBoxLayout(options)
+        column.addLayout(general)
+        column.addWidget(far)
+        column.addWidget(typos)
+        column.addStretch(1)
+        self.addTab(_scrolled(options), self.tr("Options"))
         self._update_far_count()
 
     def _make_more_tab(self) -> None:
@@ -179,9 +190,9 @@ class OptionsPanel(QTabWidget):
         al = QGridLayout(append)
         al.addWidget(self.append, 0, 0)
         al.addWidget(self.append_where, 0, 1)
-        al.addWidget(self.append_newlines, 0, 2)
-        al.addWidget(self.append_sort, 0, 3)
-        al.addWidget(self.append_text, 1, 0, 1, 4)
+        al.addWidget(self.append_newlines, 1, 0)
+        al.addWidget(self.append_sort, 1, 1)
+        al.addWidget(self.append_text, 2, 0, 1, 2)
 
         cats = QGroupBox(self.tr("Categories"), more)
         self.category_action = QComboBox(cats)
@@ -215,11 +226,12 @@ class OptionsPanel(QTabWidget):
         il.addRow(self.file_with)
         il.addRow(self.skip_no_file_change)
 
-        row = QHBoxLayout(more)
-        row.addWidget(append, 2)
-        row.addWidget(cats, 1)
-        row.addWidget(files, 1)
-        self.addTab(more, self.tr("More"))
+        column = QVBoxLayout(more)
+        column.addWidget(append)
+        column.addWidget(cats)
+        column.addWidget(files)
+        column.addStretch(1)
+        self.addTab(_scrolled(more), self.tr("More"))
 
         for edit in (self.category, self.category2):
             edit.editingFinished.connect(
@@ -272,7 +284,7 @@ class OptionsPanel(QTabWidget):
         sl.addWidget(self.contains)
         sl.addWidget(self.not_contains)
         sl.addStretch(1)
-        self.addTab(skip, self.tr("Skip"))
+        self.addTab(_scrolled(skip), self.tr("Skip"))
 
         self.skip_non_existent.toggled.connect(
             lambda on: on and self.skip_existent.setChecked(False)

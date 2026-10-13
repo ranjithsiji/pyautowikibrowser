@@ -59,9 +59,15 @@ class LoginDialog(QDialog):
         config: AppConfig,
         has_password: dict[str, bool] | None = None,
         parent: QWidget | None = None,
+        *,
+        edit_only: bool = False,
+        profile_name: str | None = None,
     ) -> None:
+        """edit_only: add or change a profile without logging in (Settings → User profiles);
+        profile_name: the profile to show first (None: the default; "": a new one)."""
         super().__init__(parent)
-        self.setWindowTitle(self.tr("Log in"))
+        self.edit_only = edit_only
+        self.setWindowTitle(self.tr("User profile") if edit_only else self.tr("Log in"))
         self.config = config
         self.has_password = has_password or {}
 
@@ -103,7 +109,7 @@ class LoginDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
         )
         ok = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
-        ok.setText(self.tr("Log in"))
+        ok.setText(self.tr("Save") if edit_only else self.tr("Log in"))
         primary_button(ok)
         self.buttons.accepted.connect(self._accept)
         self.buttons.rejected.connect(self.reject)
@@ -115,9 +121,12 @@ class LoginDialog(QDialog):
 
         self.profiles.currentIndexChanged.connect(self._load_profile)
         self.project.currentTextChanged.connect(self._update_fields)
-        default = config.profile()
-        if default is not None:
-            self.profiles.setCurrentIndex(self.profiles.findData(default.name))
+        if profile_name == "":
+            self.profiles.setCurrentIndex(self.profiles.findData(NEW_PROFILE))
+        else:
+            first = config.profile(profile_name) if profile_name else config.profile()
+            if first is not None:
+                self.profiles.setCurrentIndex(self.profiles.findData(first.name))
         self._load_profile()
 
     def _load_profile(self) -> None:
@@ -166,7 +175,11 @@ class LoginDialog(QDialog):
             return self.tr("Give the custom wiki's script path.")
         if not p.username:
             return self.tr("Give a user name.")
-        if not self.password.text() and not self.has_password.get(p.name, False):
+        if (
+            not self.edit_only
+            and not self.password.text()
+            and not self.has_password.get(p.name, False)
+        ):
             return self.tr("Give the password.")
         return None
 

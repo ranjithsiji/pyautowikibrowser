@@ -10,8 +10,14 @@
 # GNU General Public License for more details.
 """Main window: log in, make a list, and work through it (AWB's MainForm).
 
+Layout after AWB's (docs/design/awb-ui-reference.md): the page list full height on the left; the
+diff above (shown once a page is loaded) and, below it, the control tabs (Options, More, Skip,
+Start) and the edit tabs (Edit box, Logs). A toolbar that is always visible moves through the list
+(Start/Stop, Previous/Next, Save/Skip, Preview/Diff) and shows the progress.
+
 The page-by-page work runs in pyawb.editloop, off the UI thread; this window holds the state
-between steps (the page shown, waiting for Save or Skip) and moves on through the list.
+between steps. Unlike AWB, pages the loop is done with stay in the list, marked saved or skipped,
+so the loop can go back to them.
 """
 
 from __future__ import annotations
@@ -19,63 +25,74 @@ from __future__ import annotations
 import html
 import json
 import tempfile
+import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QLocale, Qt, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QCloseEvent,
+    QDesktopServices,
+    QFont,
+    QKeySequence,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
-    QCheckBox,
+    QApplication,
     QComboBox,
     QDockWidget,
-    QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
+    QProgressBar,
     QSplitter,
     QTabWidget,
-    QTextBrowser,
+    QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
 from pyawb import __version__, paths
 from pyawb.api import connect, credentials
-from pyawb.api.models import WatchOptions
 from pyawb.api.session import WikiSession
 from pyawb.api.sparql import PywikibotSparql
 from pyawb.api.typolist import fetch_english_typo_list, fetch_typo_list
-from pyawb.core import tools
+from pyawb.core import process, tools
 from pyawb.core.article import Article
 from pyawb.core.site import SiteConfig, current_site, use_site
-from pyawb.editloop import EditLoop, LoadResult, LoopOptions
+from pyawb.editloop import EditLoop, LoadResult, LoopOptions, Mode, available_modes
 from pyawb.editor import mwconfig
-from pyawb.editor.diffhtml import DiffColors, qt_diff_html
+from pyawb.editor.dialogs import SearchReplace
+from pyawb.editor.diffhtml import DiffColors
 from pyawb.editor.messages import Messages
 from pyawb.editor.mwconfig import MwConfig, default_config
 from pyawb.editor.toolbar import ToolbarSite, build_toolbar
+from pyawb.lists.listmaker import ArticleList
 from pyawb.lists.sources import WikiContext
 from pyawb.rules import typos
 from pyawb.rules.typos import RegExTypoFix
 from pyawb.settings import appconfig
+from pyawb.settings.preferences import Preferences, is_rtl_language, script_for_language
 from pyawb.ui import theme
+from pyawb.ui.diff_view import DiffView
 from pyawb.ui.editor_dialogs import DIALOGS, EditorDialogs, Suggest
-from pyawb.ui.editor_toolbar import WikiEditorToolbar
+from pyawb.ui.editor_toolbar import WikiEditorToolbar, select
 from pyawb.ui.highlighter import WikitextHighlighter
+from pyawb.ui.icons import codex_icon
+from pyawb.ui.info_bar import Info, InfoBar
 from pyawb.ui.list_maker import ListMaker
 from pyawb.ui.login_dialog import LoginDialog
+from pyawb.ui.logs_tab import LogsTab
 from pyawb.ui.options_panel import OptionsError, OptionsPanel
+from pyawb.ui.settings_dialog import SettingsDialog
+from pyawb.ui.start_tab import StartTab
 from pyawb.ui.tasks import run_task
 
 RECENT_FILE = "recent_characters.json"
-_WATCH = (
-    ("Don't change the watchlist", WatchOptions.NO_CHANGE),
-    ("Add to watchlist", WatchOptions.WATCH),
-    ("Remove from watchlist", WatchOptions.UNWATCH),
-    ("Use preferences", WatchOptions.PREFERENCES),
-)
 
 
 def ui_language() -> str:
@@ -106,12 +123,6 @@ def _save_recent(recent: list[Any]) -> None:
         pass
 
 
-def _placeholder(combo: QComboBox, text: str) -> None:
-    edit = combo.lineEdit()
-    if edit is not None:
-        edit.setPlaceholderText(text)
-
-
 def diff_colors() -> DiffColors:
     t = theme.tokens(theme.Mode.SYSTEM)
     return DiffColors(
@@ -125,174 +136,290 @@ def diff_colors() -> DiffColors:
     )
 
 
+class _Rate:
+    """Events in the last minute (AWB's Pages/min, Edits/min)."""
+
+    def __init__(self) -> None:
+        self.times: deque[float] = deque()
+
+    def add(self) -> None:
+        self.times.append(time.monotonic())
+
+    def per_minute(self) -> int:
+        now = time.monotonic()
+        while self.times and now - self.times[0] > 60:
+            self.times.popleft()
+        return len(self.times)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, language: str | None = None) -> None:
         super().__init__()
         self.setWindowTitle(f"PyAutoWikiBrowser {__version__}")
-        self.resize(1200, 800)
+        self.resize(1280, 820)
 
         self.config = self._load_config()
         self.session: WikiSession | None = None
         self.loop: EditLoop | None = None
         self.current: LoadResult | None = None
-        self.running = False  # Start pressed and not stopped
+        self.current_index = -1  # the list entry being worked on
+        self.running = False  # Play pressed and not stopped
         self.busy = False  # a background step is running
-        self.edits = self.skips = 0
+        self.edits = self.skips = self.new_pages = 0
+        self.edit_rate, self.page_rate = _Rate(), _Rate()
         self.typos: RegExTypoFix | None = None  # the wiki's typo list, loaded on first use
         self.typos_loading = False
         self.opts: LoopOptions | None = None  # the options the current page was processed with
+        self.find_state = SearchReplace()
+        self.lang = language or ui_language()
+        self.mode = Mode.READ_ONLY
+        self.paused = False  # one page at a time: no automatic step after Save
+        self.next_index = -1  # paused after a save: the page Next goes to
 
-        # editor (Edit tab)
-        edit_tab = QWidget(self)
-        edit_layout = QVBoxLayout(edit_tab)
-        edit_layout.setContentsMargins(0, 0, 0, 0)
-        edit_layout.setSpacing(0)
-        self.editor = QPlainTextEdit(edit_tab)
+        # -- edit box (editor toolbar, this page's summary, the editor) --
+        edit_box = QWidget(self)
+        eb = QVBoxLayout(edit_box)
+        eb.setContentsMargins(0, 0, 0, 0)
+        eb.setSpacing(0)
+        self.editor = QPlainTextEdit(edit_box)
         self.editor.setObjectName("editor")
         self.highlighter = WikitextHighlighter(self.editor.document(), default_config())
-        self.messages = Messages(language or ui_language())
+        self.messages = Messages(self.lang)
         self.site = ToolbarSite()
         self.toolbar = WikiEditorToolbar(
             self.editor,
             build_toolbar(self.messages, self.site, recent_characters=_load_recent()),
             self.messages,
             dialogs=DIALOGS,
-            parent=edit_tab,
+            parent=edit_box,
         )
         self.toolbar.recent_changed.connect(_save_recent)
         self.dialogs = EditorDialogs(self.editor, self.messages, self.site, open_url=self.open_url)
         self.toolbar.dialog_requested.connect(self.dialogs.open)
-        edit_layout.addWidget(self.toolbar)
-        edit_layout.addWidget(self.editor, 1)
+        self.review_summary = QComboBox(edit_box)
+        self.review_summary.setEditable(True)
+        self.review_summary.setObjectName("reviewSummary")
+        edit = self.review_summary.lineEdit()
+        if edit is not None:
+            edit.setPlaceholderText(self.tr("Edit summary for this page"))
+        eb.addWidget(self.toolbar)
+        eb.addWidget(self.review_summary)
+        eb.addWidget(self.editor, 1)
 
-        # diff (Diff tab)
-        self.diff = QTextBrowser(self)
-        self.diff.setObjectName("diffView")
-        self.diff.setOpenLinks(False)
+        self.logs = LogsTab(self)
+        self.edit_tabs = QTabWidget(self)
+        self.edit_tabs.setObjectName("editTabs")
+        self.edit_tabs.addTab(edit_box, self.tr("Edit box"))
+        self.edit_tabs.addTab(self.logs, self.tr("Logs"))
 
-        self.tabs = QTabWidget(self)
-        self.tabs.addTab(edit_tab, self.tr("Edit"))
-        self.tabs.addTab(self.diff, self.tr("Diff"))
-
-        # options, summary, buttons
+        # -- control tabs (Options, More, Skip from the panel; Start) --
         self.options = OptionsPanel(self)
         self.options.typos_toggled.connect(self._typos_toggled)
-        self.summary = QComboBox(self)
-        self.summary.setEditable(True)
-        self.summary.setObjectName("summary")
-        _placeholder(self.summary, self.tr("Default edit summary"))
-        self.review_summary = QComboBox(self)
-        self.review_summary.setEditable(True)
-        _placeholder(self.review_summary, self.tr("Edit summary for this page"))
-        self.minor = QCheckBox(self.tr("Minor edit"), self)
-        self.watch = QComboBox(self)
-        for label, value in _WATCH:
-            self.watch.addItem(self.tr(label), value)
-
-        self.start_button = QPushButton(self.tr("Start"), self)
-        self.start_button.setProperty("primary", True)
-        self.save_button = QPushButton(self.tr("Save"), self)
-        self.save_button.setProperty("primary", True)
-        self.skip_button = QPushButton(self.tr("Skip"), self)
-        self.stop_button = QPushButton(self.tr("Stop"), self)
-        self.diff_button = QPushButton(self.tr("Show changes"), self)
-        self.preview_button = QPushButton(self.tr("Preview"), self)
-        self.start_button.clicked.connect(self.start)
+        self.start_tab = StartTab(self)
+        self.options.addTab(self.start_tab, self.tr("Start"))
+        self.options.setCurrentWidget(self.start_tab)
+        self.summary = self.start_tab.summary
+        self.minor = self.start_tab.minor
+        self.watch = self.start_tab.watch
+        self.start_tab.find_requested.connect(self.find_in_editor)
+        self.save_button = self.start_tab.save
+        self.skip_button = self.start_tab.skip
+        self.diff_button = self.start_tab.diff
+        self.preview_button = self.start_tab.preview
+        self.start_tab.start.clicked.connect(self.start)
+        self.start_tab.stop.clicked.connect(self.stop)
         self.save_button.clicked.connect(self.save)
         self.skip_button.clicked.connect(lambda: self.skip_page("user"))
-        self.stop_button.clicked.connect(self.stop)
         self.diff_button.clicked.connect(self.show_diff)
         self.preview_button.clicked.connect(self.preview)
 
-        controls = QWidget(self)
-        cl = QVBoxLayout(controls)
-        cl.setContentsMargins(8, 4, 8, 8)
-        summary_row = QHBoxLayout()
-        summary_row.addWidget(QLabel(self.tr("Summary"), controls))
-        summary_row.addWidget(self.summary, 2)
-        summary_row.addWidget(self.review_summary, 3)
-        cl.addLayout(summary_row)
-        button_row = QHBoxLayout()
-        button_row.addWidget(self.minor)
-        button_row.addWidget(self.watch)
-        button_row.addStretch(1)
-        for b in (
-            self.start_button,
-            self.stop_button,
-            self.diff_button,
-            self.preview_button,
-            self.skip_button,
-            self.save_button,
-        ):
-            button_row.addWidget(b)
-        cl.addLayout(button_row)
+        # -- the diff, above the control and edit tabs; hidden until a page is loaded --
+        self.diff = DiffView(self)
+        self.diff.line_clicked.connect(self.go_to_line)
+        self.diff.hide()
+        bottom = QSplitter(Qt.Orientation.Horizontal, self)
+        bottom.addWidget(self.options)
+        bottom.addWidget(self.edit_tabs)
+        bottom.setStretchFactor(0, 0)
+        bottom.setStretchFactor(1, 1)
+        self.bottom_splitter = bottom
+        self._sized = False
+        self.splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self.splitter.addWidget(self.diff)
+        self.splitter.addWidget(bottom)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 1)
+        self.setCentralWidget(self.splitter)
 
-        bottom = QWidget(self)
-        bl = QHBoxLayout(bottom)
-        bl.setContentsMargins(0, 0, 0, 0)
-        bl.addWidget(self.options, 1)
-        splitter = QSplitter(Qt.Orientation.Vertical, self)
-        splitter.addWidget(self.tabs)
-        splitter.addWidget(bottom)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 1)
-        central = QWidget(self)
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(splitter, 1)
-        layout.addWidget(controls)
-        self.setCentralWidget(central)
-
-        # list maker
+        # -- the list, full height on the left --
         self.list_maker = ListMaker(self)
         self.list_maker.status.connect(self.set_status)
         self.list_maker.changed.connect(self._update_buttons)
-        dock = QDockWidget(self.tr("Pages"), self)
+        self.logs.add_to_list.connect(self._add_titles)
+        dock = QDockWidget(self.tr("Make list"), self)
         dock.setObjectName("listDock")
         dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
         dock.setWidget(self.list_maker)
+        self.setCorner(Qt.Corner.TopLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.setCorner(Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
 
-        # status bar
-        self.status_label = QLabel(self.tr("Not logged in"), self)
-        self.counts_label = QLabel(self)
-        self.wiki_label = QLabel(self)
-        self.statusBar().addWidget(self.status_label, 1)
-        self.statusBar().addPermanentWidget(self.counts_label)
-        self.statusBar().addPermanentWidget(self.wiki_label)
-
+        self.info_bar = InfoBar(self)
+        info = QToolBar(self.tr("Information"), self)
+        info.setObjectName("infoToolbar")
+        info.setMovable(False)
+        info.addWidget(self.info_bar)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, info)
+        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
+        self._make_toolbar()
+        self._make_statusbar()
         self._make_menus()
+        self.apply_preferences(self.config.preferences)
+        self._update_modes()
         self._update_counts()
         self._update_buttons()
 
-    # -- menus --------------------------------------------------------------------------------
+    # -- toolbar, status bar, menus -----------------------------------------------------------
+
+    def _make_toolbar(self) -> None:
+        """Always visible: Start/Stop | Previous, Next | Save, Skip | Preview, Diff, and the
+        progress through the list."""
+        bar = QToolBar(self.tr("Pages"), self)
+        bar.setObjectName("loopToolbar")
+        bar.setMovable(False)
+        bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        rtl = self.layoutDirection() == Qt.LayoutDirection.RightToLeft
+
+        def action(icon: str, text: str, slot: Any, key: str = "") -> QAction:
+            a = QAction(codex_icon(icon, self.lang, rtl), text, self)
+            a.triggered.connect(slot)
+            if key:
+                a.setShortcut(QKeySequence(key))
+                a.setToolTip(
+                    f"{text} ({QKeySequence(key).toString(QKeySequence.SequenceFormat.NativeText)})"
+                )
+            bar.addAction(a)
+            return a
+
+        # the mode first, the active one highlighted; only those the user may use are shown
+        self.mode_group = QActionGroup(self)
+        self.mode_group.setExclusive(True)
+        self.mode_actions: dict[Mode, QAction] = {}
+        for mode, icon, text, tip in (
+            (Mode.READ_ONLY, "eye", self.tr("Read only"),
+             self.tr("Open and show pages as they are; nothing is changed or saved")),
+            (Mode.DRY_RUN, "labFlask", self.tr("Dry run"),
+             self.tr("Make the changes and show the diff, but never save")),
+            (Mode.EDIT, "edit", self.tr("Make changes"),
+             self.tr("Make the changes, show the diff and save")),
+        ):  # fmt: skip
+            a = QAction(codex_icon(icon, self.lang, rtl), text, self)
+            a.setCheckable(True)
+            a.setToolTip(tip)
+            a.triggered.connect(lambda _=False, m=mode: self.set_mode(m))
+            self.mode_group.addAction(a)
+            bar.addAction(a)
+            button = bar.widgetForAction(a)
+            if button is not None:
+                button.setObjectName("modeButton")
+            self.mode_actions[mode] = a
+        bar.addSeparator()
+        self.start_action = action("play", self.tr("Start"), self.start)
+        self.stop_action = action("stop", self.tr("Stop"), self.stop)
+        bar.addSeparator()
+        self.previous_action = action("previous", self.tr("Previous"), self.previous_page)
+        self.pause_action = action("pause", self.tr("Pause"), self.set_paused)
+        self.pause_action.setCheckable(True)
+        self.pause_action.setToolTip(
+            self.tr("Go one page at a time with Previous and Next (Skip still moves on)")
+        )
+        pause_button = bar.widgetForAction(self.pause_action)
+        if pause_button is not None:
+            pause_button.setObjectName("modeButton")
+        self.next_action = action("next", self.tr("Next"), self.next_page)
+        bar.addSeparator()
+        self.save_action = action("check", self.tr("Save"), self.save, "Ctrl+S")
+        self.skip_action = action(
+            "arrowNext", self.tr("Skip"), lambda: self.skip_page("user"), "Ctrl+I"
+        )
+        bar.addSeparator()
+        self.preview_action = action("eye", self.tr("Preview"), self.preview, "Ctrl+E")
+        self.diff_action = action("diffs", self.tr("Diff"), self.show_diff, "Ctrl+D")
+        bar.addSeparator()
+        self.position_label = QLabel(self)
+        self.position_label.setObjectName("positionLabel")
+        self.progress = QProgressBar(self)
+        self.progress.setObjectName("listProgress")
+        self.progress.setTextVisible(False)
+        self.progress.setMaximumWidth(220)
+        bar.addWidget(self.position_label)
+        bar.addWidget(self.progress)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, bar)
+        self.loop_toolbar = bar
+
+    def _make_statusbar(self) -> None:
+        self.status_label = QLabel(self.tr("Not logged in"), self)
+        self.counts_label = QLabel(self)
+        self.wiki_label = QLabel(self)
+        self.user_label = QLabel(self)
+        self.user_label.setObjectName("userLabel")
+        self.statusBar().addWidget(self.status_label, 1)
+        self.statusBar().addPermanentWidget(self.counts_label)
+        self.statusBar().addPermanentWidget(self.wiki_label)
+        self.statusBar().addPermanentWidget(self.user_label)
+        self._update_user()
 
     def _make_menus(self) -> None:
         file_menu = self.menuBar().addMenu(self.tr("&File"))
-        self.login_action = QAction(self.tr("Log in…"), self)
+        self.login_action = QAction(self.tr("Log in/Profiles…"), self)
         self.login_action.setShortcut(QKeySequence("Ctrl+L"))
         self.login_action.triggered.connect(self.log_in)
         self.logout_action = QAction(self.tr("Log out"), self)
         self.logout_action.triggered.connect(self.log_out)
-        quit_action = QAction(self.tr("Quit"), self)
-        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        refresh = QAction(self.tr("Refresh status/typos"), self)
+        refresh.setShortcut(QKeySequence("Ctrl+R"))
+        refresh.triggered.connect(self.refresh_typos)
+        quit_action = QAction(self.tr("Exit"), self)
+        quit_action.setShortcut(QKeySequence("Ctrl+Q"))
         quit_action.triggered.connect(self.close)
-        file_menu.addActions([self.login_action, self.logout_action])
+        file_menu.addActions([self.login_action, self.logout_action, refresh])
         file_menu.addSeparator()
         file_menu.addAction(quit_action)
 
-        # AWB's keyboard shortcuts for the loop
-        for key, slot in (
-            ("Ctrl+S", self.save),
-            ("Ctrl+I", lambda: self.skip_page("user")),
-            ("Ctrl+D", self.show_diff),
-            ("Ctrl+E", self.preview),
+        list_menu = self.menuBar().addMenu(self.tr("&List"))
+        lm = self.list_maker
+        for text, slot in (
+            (self.tr("Remove duplicates"), lm.remove_duplicates),
+            (self.tr("Remove done pages"), lm.remove_done),
+            (self.tr("Clear current list"), lm.clear_list),
         ):
-            action = QAction(self)
-            action.setShortcut(QKeySequence(key))
-            action.triggered.connect(slot)
-            self.addAction(action)
+            a = QAction(text, self)
+            a.triggered.connect(slot)
+            list_menu.addAction(a)
+
+        settings_menu = self.menuBar().addMenu(self.tr("&Settings"))
+        for text, page, key in (
+            (self.tr("Theme…"), "theme", ""),
+            (self.tr("Language…"), "language", ""),
+            (self.tr("Fonts…"), "fonts", ""),
+            (self.tr("User profiles…"), "profiles", ""),
+            (None, "", ""),
+            (self.tr("Preferences…"), "general", "Ctrl+P"),
+        ):
+            if text is None:
+                settings_menu.addSeparator()
+                continue
+            a = QAction(text, self)
+            if key:
+                a.setShortcut(QKeySequence(key))
+            a.triggered.connect(lambda _=False, p=page: self.open_settings(p))
+            settings_menu.addAction(a)
+
+        view_menu = self.menuBar().addMenu(self.tr("&View"))
+        self.show_diff_action = QAction(self.tr("Show the diff pane"), self)
+        self.show_diff_action.setCheckable(True)
+        self.show_diff_action.toggled.connect(self.diff.setVisible)
+        view_menu.addAction(self.show_diff_action)
 
         help_menu = self.menuBar().addMenu(self.tr("&Help"))
         about = QAction(self.tr("About PyAutoWikiBrowser"), self)
@@ -315,22 +442,66 @@ class MainWindow(QMainWindow):
 
     def _update_counts(self) -> None:
         self.counts_label.setText(
-            self.tr("Edits: %1  Skipped: %2")
-            .replace("%1", str(self.edits))
-            .replace("%2", str(self.skips))
+            self.tr("Pages/min: %1  Edits/min: %2  Edits: %3  Skipped: %4  New: %5")
+            .replace("%1", str(self.page_rate.per_minute()))
+            .replace("%2", str(self.edit_rate.per_minute()))
+            .replace("%3", str(self.edits))
+            .replace("%4", str(self.skips))
+            .replace("%5", str(self.new_pages))
         )
+        self._update_progress()
+
+    def _update_progress(self) -> None:
+        articles = self.list_maker.articles
+        total = len(articles)
+        index = self.current_index if self.current_index >= 0 else articles.selected_index
+        self.position_label.setText(f"{index + 1 if index >= 0 else 0} / {total}")
+        self.progress.setMaximum(max(total, 1))
+        self.progress.setValue(articles.done_count)
+
+    def _update_user(self) -> None:
+        if hasattr(self, "info_bar"):
+            self._update_info()
+        """AWB's user box: the name on green when logged in, red "User:" when not."""
+        s = self.session
+        logged_in = s is not None and s.user.is_logged_in
+        self.user_label.setText(s.user.name if s is not None and logged_in else self.tr("User:"))
+        self.user_label.setProperty("loggedIn", logged_in)
+        self.user_label.style().unpolish(self.user_label)
+        self.user_label.style().polish(self.user_label)
 
     def _update_buttons(self) -> None:
-        can_save = self.session is not None and self.session.can_save
         page = self.current is not None and not self.busy
-        has_pages = len(self.list_maker.articles) > 0
-        self.start_button.setEnabled(can_save and not self.busy and not page and has_pages)
-        self.stop_button.setEnabled(self.running or self.busy)
-        for b in (self.save_button, self.skip_button, self.diff_button, self.preview_button):
-            b.setEnabled(page)
+        articles = self.list_maker.articles
+        has_pages = len(articles) > 0
+        ready = self._can_run() and has_pages
+        self.start_action.setEnabled(ready and not self.running)
+        self.start_tab.start.setEnabled(ready and not self.running)
+        index = self.current_index if self.current_index >= 0 else articles.selected_index
+        # Previous and Next step by hand: while paused (a running batch moves by itself)
+        target = self.next_index if self.current is None and self.next_index >= 0 else index + 1
+        self.previous_action.setEnabled(self.paused and ready and index > 0)
+        self.next_action.setEnabled(self.paused and ready and 0 <= target < len(articles))
+        stop = self.running or self.busy or self.current is not None
+        self.stop_action.setEnabled(stop)
+        self.start_tab.stop.setEnabled(stop)
+        editing = self.mode is not Mode.READ_ONLY
+        saving = self.mode is Mode.EDIT
+        for widget, on in (
+            (self.save_button, page and saving),
+            (self.save_action, page and saving),
+            (self.skip_button, page and editing),
+            (self.skip_action, page and editing),
+            (self.diff_button, page and editing),
+            (self.diff_action, page and editing),
+            (self.preview_button, page),
+            (self.preview_action, page),
+        ):
+            widget.setEnabled(on)
         self.logout_action.setEnabled(self.session is not None and not self.busy)
         self.login_action.setEnabled(not self.busy)
-        self.list_maker.set_editable(not self.running)
+        self.list_maker.set_editable(not self.running and self.current is None)
+        self._update_progress()
 
     def _set_busy(self, busy: bool, status: str = "") -> None:
         self.busy = busy
@@ -401,6 +572,10 @@ class MainWindow(QMainWindow):
     def _connected(self, result: object) -> None:
         session, wiki = result  # type: ignore[misc]
         assert isinstance(session, WikiSession) and isinstance(wiki, WikiContext)
+        self.use_session(session, wiki)
+
+    def use_session(self, session: WikiSession, wiki: WikiContext | None = None) -> None:
+        """Work on this (connected) wiki."""
         self.session = session
         self.loop = EditLoop(session)
         self._set_busy(False)
@@ -414,12 +589,15 @@ class MainWindow(QMainWindow):
         self.list_maker.set_wiki(wiki, site)
         self.options.set_site(site)
         self.typos = None
-        if self.options.fix_typos.isChecked():
-            self.load_typos()
-        self.wiki_label.setText(f"{session.user.name} @ {site.url}")
+        self.wiki_label.setText(site.url.replace("https://", "").replace(".org", ""))
+        self._update_user()
         status = session.status
         if session.can_save:
-            self.set_status(self.tr("Logged in"))
+            self.set_status(
+                self.tr("Logged in, user and software enabled. Bot = %1, Admin = %2")
+                .replace("%1", str(session.is_bot))
+                .replace("%2", str(session.user.is_sysop))
+            )
         else:
             reason = status.status.value if status else "unknown"
             detail = status.reason if status and status.reason else ""
@@ -434,6 +612,11 @@ class MainWindow(QMainWindow):
             )
         if status and status.messages:
             QMessageBox.information(self, self.tr("Messages"), "\n\n".join(status.messages))
+        if session.can_save:
+            self.mode = Mode.EDIT
+        self._update_modes()
+        if self.options.fix_typos.isChecked() and self.mode is not Mode.READ_ONLY:
+            self.load_typos()
         self._update_buttons()
 
     def _connect_failed(self, error: Exception) -> None:
@@ -451,24 +634,164 @@ class MainWindow(QMainWindow):
         self.wiki_label.clear()
         self.list_maker.set_wiki(None, current_site())
         self.set_status(self.tr("Not logged in"))
+        self._update_user()
+        self._update_modes()
         self._update_buttons()
 
-    # -- the loop -----------------------------------------------------------------------------
+    def _add_titles(self, titles: list[str]) -> None:
+        self.list_maker.articles.add([Article(t) for t in titles])
+        self.list_maker.refresh()
+
+    # -- moving through the list --------------------------------------------------------------
+
+    def _logged_in(self) -> bool:
+        return self.session is not None and self.session.user.is_logged_in
+
+    def _update_modes(self) -> None:
+        """Show the modes this user may use; fall back to the safest one available."""
+        can_save = self.session is not None and self.session.can_save
+        modes = available_modes(self._logged_in(), can_save)
+        for mode, action in self.mode_actions.items():
+            action.setVisible(mode in modes)
+        if self.mode not in modes:
+            self.mode = Mode.DRY_RUN if Mode.DRY_RUN in modes else Mode.READ_ONLY
+        self.mode_actions[self.mode].setChecked(True)
+        self._update_info()
+
+    def _update_info(self) -> None:
+        """The information bar: wiki, user, CheckPage approval, mode."""
+        s = self.session
+        names = {
+            Mode.READ_ONLY: (self.tr("Read only"), "eye"),
+            Mode.DRY_RUN: (self.tr("Dry run"), "labFlask"),
+            Mode.EDIT: (self.tr("Make changes"), "edit"),
+        }
+        mode, icon = names[self.mode]
+        if s is None:
+            self.info_bar.show_info(Info(mode=mode, mode_icon=icon))
+            return
+        general = s.siteinfo.query.get("general", {}) if s.siteinfo else {}
+        host = s.site.url.replace("https://", "").replace("http://", "")
+        sitename = str(general.get("sitename", "")) or s.site.project
+        groups = [g for g, on in (("bot", s.user.is_bot), ("admin", s.user.is_sysop)) if on]
+        logged_in = self._logged_in()
+        status = s.status
+        note = ""
+        if status is not None:
+            note = status.status.value + (f": {status.reason}" if status.reason else "")
+        self.info_bar.show_info(
+            Info(
+                project=s.site.project,
+                # isolated, so a right-to-left site name does not reorder the host after it
+                wiki=f"\u2068{sitename}\u2069 ({host})",
+                user=s.user.name if logged_in else "",
+                user_groups=", ".join(groups),
+                approved=s.can_save if logged_in else None,
+                approval_note=note,
+                mode=mode,
+                mode_icon=icon,
+            )
+        )
+
+    def set_mode(self, mode: Mode) -> None:
+        """Change the mode; the page shown (if any) is put aside, since it was loaded for the
+        other mode."""
+        if mode is self.mode:
+            return
+        self.stop()
+        self.mode = mode
+        self._update_modes()
+        self.set_status(
+            {
+                Mode.READ_ONLY: self.tr("Read only: pages are shown, nothing is changed"),
+                Mode.DRY_RUN: self.tr("Dry run: changes are shown, nothing is saved"),
+                Mode.EDIT: self.tr("Make changes"),
+            }[self.mode]
+        )
+        self._update_buttons()
+
+    def _can_run(self) -> bool:
+        if self.busy or self.loop is None or self.session is None:
+            return False
+        return self.mode in available_modes(self._logged_in(), self.session.can_save)
 
     def start(self) -> None:
-        """StartArticleProcessing: load and process the selected page."""
-        if self.busy or self.loop is None or self.session is None or not self.session.can_save:
+        """Start (or go on with) the editing: from the selected page, or the next one not done."""
+        if not self._can_run():
             return
-        if self.session.site.project != "custom" and not self.summary.currentText().strip():
+        articles = self.list_maker.articles
+        index = articles.selected_index
+        if index < 0 or articles.items[index].list_status:
+            index = articles.next_pending(max(index, 0))
+            if index < 0:
+                index = articles.next_pending(0)
+        if index < 0:
+            self.set_status(
+                self.tr("No pages left in the list: make a list first")
+                if not len(articles)
+                else self.tr("The list is done")
+            )
+            return
+        self.load_index(index)
+
+    def _position(self) -> int:
+        articles = self.list_maker.articles
+        return self.current_index if self.current_index >= 0 else articles.selected_index
+
+    def previous_page(self) -> None:
+        """Load the page before this one in the list (saved and skipped pages too)."""
+        index = self._position()
+        if self._can_run() and index > 0:
+            self.load_index(index - 1)
+
+    def next_page(self) -> None:
+        """Load the page after this one, leaving this one as it is (not marked skipped); after a
+        save while paused, the page selected next."""
+        if not self._can_run():
+            return
+        if self.current is None and self.next_index >= 0:
+            self.load_index(self.next_index)
+            return
+        index = self._position()
+        if index + 1 < len(self.list_maker.articles):
+            self.load_index(index + 1)
+
+    def set_paused(self, paused: bool) -> None:
+        """Pause: stay on each page after saving and move with Previous / Next. Unpausing goes
+        on to the next page if one is waiting."""
+        self.paused = paused
+        self.pause_action.setChecked(paused)
+        if not paused and self.running and self.current is None and self.next_index >= 0:
+            self.load_index(self.next_index)
+            return
+        self.set_status(
+            self.tr("Paused: move with Previous and Next") if paused else self.tr("Resumed")
+        )
+        self._update_buttons()
+
+    def load_index(self, index: int) -> None:
+        """StartArticleProcessing for the list entry at index (done pages are processed again)."""
+        if not self._can_run():
+            return
+        assert self.session is not None and self.loop is not None
+        if (
+            self.mode is Mode.EDIT
+            and self.session.site.project != "custom"
+            and not self.summary.currentText().strip()
+        ):
             QMessageBox.warning(
                 self, self.tr("Edit summary"), self.tr("Please enter an edit summary.")
             )
             self.stop()
             return
-        if self.options.fix_typos.isChecked() and self.typos is None:
-            # AWB loads the list before the first page; start again once it is there
+        if (
+            self.mode is not Mode.READ_ONLY
+            and self.options.fix_typos.isChecked()
+            and self.typos is None
+        ):
+            # AWB loads the list before the first page; go on once it is there
             if not self.typos_loading:
-                self.load_typos(start_after=True)
+                self.load_typos(then_index=index)
             return
         try:
             status = self.session.status
@@ -484,15 +807,18 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, self.tr("Skip options"), str(e))
             self.stop()
             return
-        self._remember_summary()
-        article = self.list_maker.selected_article()
-        if article is None:
+        opts.mode = self.mode
+        self.start_tab.remember_summary()
+        articles = self.list_maker.articles
+        if not 0 <= index < len(articles):
             self.stop()
-            self.set_status(self.tr("No pages in the list: make a list first"))
             return
         self.running = True
         self._clear_page()
-        loop, title = self.loop, article.name
+        self.next_index = -1
+        self.current_index = index
+        self.list_maker.select_index(index)
+        loop, title = self.loop, articles.items[index].name
         self.opts = opts
         self._set_busy(True, self.tr("Loading %1…").replace("%1", title))
         run_task(lambda: loop.load(title, opts), self._loaded, self._step_failed)
@@ -502,8 +828,7 @@ class MainWindow(QMainWindow):
         p = self.opts.process if self.opts else None
         slow: list[str] = []
         if p is not None and p.find_and_replace is not None:
-            far = p.find_and_replace
-            slow += [r.find for r in getattr(far, "timed_out", ())]
+            slow += [r.find for r in getattr(p.find_and_replace, "timed_out", ())]
         if p is not None and isinstance(p.typos, RegExTypoFix):
             slow += p.typos.timed_out
         if slow:
@@ -517,8 +842,16 @@ class MainWindow(QMainWindow):
         if on and self.typos is None and not self.typos_loading and self.session is not None:
             self.load_typos()
 
-    def load_typos(self, english: bool = False, start_after: bool = False) -> None:
-        """Load the wiki's typo list (or English Wikipedia's) in the background."""
+    def refresh_typos(self) -> None:
+        """File → Refresh status/typos: load the typo list again."""
+        if self.session is not None and not self.typos_loading:
+            self.typos = None
+            if self.options.fix_typos.isChecked():
+                self.load_typos()
+
+    def load_typos(self, english: bool = False, then_index: int = -1) -> None:
+        """Load the wiki's typo list (or English Wikipedia's) in the background; then_index: a
+        page to load once it is there."""
         session = self.session
         if session is None:
             return
@@ -528,10 +861,8 @@ class MainWindow(QMainWindow):
         def work() -> tuple[str, RegExTypoFix | None]:
             with use_site(session.site):
                 if english:
-                    where, text = (
-                        "en: Wikipedia:AutoWikiBrowser/Typos",
-                        fetch_english_typo_list(session),
-                    )
+                    where = "en: Wikipedia:AutoWikiBrowser/Typos"
+                    text = fetch_english_typo_list(session)
                 else:
                     loc, text = fetch_typo_list(
                         session,
@@ -560,7 +891,7 @@ class MainWindow(QMainWindow):
                     ).replace("%1", where),
                 )
                 if answer == QMessageBox.StandardButton.Yes and not english:
-                    self.load_typos(english=True, start_after=start_after)
+                    self.load_typos(english=True, then_index=then_index)
                 else:
                     self._typos_unavailable(self.tr("No typo list"))
                 return
@@ -569,13 +900,11 @@ class MainWindow(QMainWindow):
                 self._typos_unavailable(fixer.error or self.tr("The typo list has no rules"))
                 return
             self.typos = fixer
-            self.options.typo_status.setText(
-                self.tr("%1 typos loaded from %2")
-                .replace("%1", str(fixer.typo_count))
-                .replace("%2", where)
-            )
-            if start_after:
-                self.start()
+            loaded = self.tr("%1 typos loaded").replace("%1", str(fixer.typo_count))
+            self.options.typo_status.setText(loaded + " (" + where + ")")
+            self.set_status(loaded)
+            if then_index >= 0:
+                self.load_index(then_index)
 
         def failed(error: Exception) -> None:
             self.typos_loading = False
@@ -590,10 +919,7 @@ class MainWindow(QMainWindow):
         self.options.typo_status.setText(self.tr("Not loaded: %1").replace("%1", why))
         self.options.fix_typos.setChecked(False)
 
-    def _remember_summary(self) -> None:
-        text = self.summary.currentText().strip()
-        if text and self.summary.findText(text) < 0:
-            self.summary.insertItem(0, text)
+    # -- one page -----------------------------------------------------------------------------
 
     def _loaded(self, result: object) -> None:
         assert isinstance(result, LoadResult)
@@ -625,10 +951,23 @@ class MainWindow(QMainWindow):
         self.editor.moveCursor(self.editor.textCursor().MoveOperation.Start)
         self.review_summary.setEditText(result.summary)
         title = result.page.title if result.page else result.title
-        self.setWindowTitle(f"{title} – PyAutoWikiBrowser")
+        self.setWindowTitle(f"PyAutoWikiBrowser – {title}")
+        if result.article is not None:
+            with use_site(self.session.site if self.session else current_site()):
+                self.start_tab.set_page_info(process.page_info(result.text, result.article))
         if result.in_use:
             self.set_status(self.tr("This page has {{inuse}}: consider skipping it"))
+        self.edit_tabs.setCurrentIndex(0)
+        self.editor.setReadOnly(self.mode is Mode.READ_ONLY)
         self._update_buttons()
+        if self.mode is Mode.READ_ONLY:
+            self.set_status(self.tr("Read only: %1").replace("%1", title))
+            return
+        if self.config.preferences.on_load == "edit":
+            self._set_busy(False, self.tr("Ready: Diff shows the changes"))
+            self.editor.setFocus()
+            return
+        self.diff.show()
         self.show_diff()
 
     def _edited_text(self) -> str:
@@ -642,20 +981,48 @@ class MainWindow(QMainWindow):
         self._set_busy(True, self.tr("Getting the diff…"))
 
         def done(rows: object) -> None:
-            self._set_busy(False, self.tr("Ready to save"))
-            self.diff.setHtml(
-                qt_diff_html(
-                    str(rows),
-                    diff_colors(),
-                    rtl=rtl,
-                    line_label=self.tr("Line $1:"),
-                    no_difference=self.tr("No difference"),
-                )
+            self._set_busy(
+                False,
+                self.tr("Ready to save")
+                if self.mode is Mode.EDIT
+                else self.tr("Dry run: Skip or Next to go on (nothing is saved)"),
             )
-            self.tabs.setCurrentWidget(self.diff)
+            self.diff.show()
+            self.diff.show_diff(
+                str(rows),
+                diff_colors(),
+                rtl=rtl,
+                hint=self.tr('Press the "Skip" button to skip to the next page.'),
+                line_label=self.tr("Line $1:"),
+                no_difference=self.tr("No changes"),
+            )
             self.save_button.setFocus()
 
         run_task(lambda: loop.diff(result, text), done, self._step_failed)
+
+    def go_to_line(self, line: int) -> None:
+        """A click on the diff: put the editor's cursor at the start of that line."""
+        block = self.editor.document().findBlockByNumber(max(line - 1, 0))
+        if block.isValid():
+            cursor = self.editor.textCursor()
+            cursor.setPosition(block.position())
+            self.editor.setTextCursor(cursor)
+            self.edit_tabs.setCurrentIndex(0)
+            self.editor.setFocus()
+            self.editor.centerCursor()
+
+    def find_in_editor(self, text: str, is_regex: bool, case_sensitive: bool) -> None:
+        """The Start tab's Find: the next match in the editor (.NET regex syntax via core.rx)."""
+        content = self.editor.toPlainText()
+        cursor = self.editor.textCursor()
+        self.find_state.offset = cursor.selectionEnd()
+        result = self.find_state.run("find", content, text, "", case_sensitive, is_regex)
+        if result.selection is not None:
+            select(self.editor, *result.selection, content)
+            self.editor.ensureCursorVisible()
+            self.edit_tabs.setCurrentIndex(0)
+        else:
+            self.set_status(self.tr("Not found: %1").replace("%1", text))
 
     def preview(self) -> None:
         """Parse the edited text on the wiki and open it in the default browser."""
@@ -673,7 +1040,7 @@ class MainWindow(QMainWindow):
         run_task(lambda: loop.preview(result, text), done, self._step_failed)
 
     def save(self) -> None:
-        if self.current is None or self.loop is None or self.busy:
+        if self.current is None or self.loop is None or self.busy or self.mode is not Mode.EDIT:
             return
         text = self._edited_text()
         page = self.current.page
@@ -696,9 +1063,16 @@ class MainWindow(QMainWindow):
 
     def _saved(self, _info: object) -> None:
         self._set_busy(False, self.tr("Saved"))
+        result = self.current
         self.edits += 1
+        self.edit_rate.add()
+        self.page_rate.add()
+        if result is not None and result.page is not None and not result.page.exists:
+            self.new_pages += 1
+        if result is not None:
+            self.logs.log_saved(result.page.title if result.page else result.title)
         self._update_counts()
-        self._done_with_page()
+        self._done_with_page(ArticleList.SAVED)
 
     def _save_failed(self, error: Exception) -> None:
         # the page stays loaded: the user may retry, edit or skip
@@ -709,33 +1083,42 @@ class MainWindow(QMainWindow):
         if self.current is None or self.busy:
             return
         self.skips += 1
-        self._update_counts()
+        self.page_rate.add()
         title = self.current.page.title if self.current.page else self.current.title
-        why = self.tr("skipped by you") if reason == "user" else reason
-        self.set_status(self.tr("Skipped %1: %2").replace("%1", title).replace("%2", why))
-        self._done_with_page()
-
-    def _done_with_page(self) -> None:
-        """Remove the page from the list and go on with the next (PageSaved / SkipPage)."""
-        result = self.current
-        self._clear_page()
-        if result is not None:
-            title = result.page.title if result.page and result.renamed else result.title
-            if not self.list_maker.remove_article(title):
-                self.stop()
-                QMessageBox.warning(
-                    self,
-                    self.tr("List"),
-                    self.tr("The page could not be removed from the list. Please remove it."),
-                )
-                return
-        if self.running and len(self.list_maker.articles) > 0:
-            self.start()
+        if reason == "user":
+            self.logs.log_skipped(title, self.tr("User"), self.tr("Clicked ignore"))
+            why = self.tr("skipped by you")
         else:
-            self.running = False
-            if not len(self.list_maker.articles):
-                self.set_status(self.tr("The list is done"))
+            self.logs.log_skipped(title, "AWB", reason)
+            why = reason
+        self.set_status(self.tr("Skipped %1: %2").replace("%1", title).replace("%2", why))
+        self._update_counts()
+        self._done_with_page(ArticleList.SKIPPED)
+
+    def _done_with_page(self, status: str) -> None:
+        """Mark the page done and go on with the next one not done (PageSaved / SkipPage)."""
+        index = self.current_index
+        self._clear_page()
+        self.list_maker.mark(index, status)
+        articles = self.list_maker.articles
+        following = articles.next_pending(index + 1)
+        if following >= 0:
+            self.list_maker.select_index(following)
+        # Skip always moves on; after a save, a paused loop waits for Next
+        advance = status == ArticleList.SKIPPED or not self.paused
+        if self.running and following >= 0 and advance:
+            self.load_index(following)
+            return
+        self.current_index = -1
+        if self.running and following >= 0:
+            self.next_index = following
+            self.set_status(self.tr("Saved. Paused: press Next for the next page"))
             self._update_buttons()
+            return
+        self.running = False
+        if following < 0:
+            self.set_status(self.tr("List complete!"))
+        self._update_buttons()
 
     def _step_failed(self, error: Exception) -> None:
         """Loading or processing failed: stop, as AWB does, and keep the page in the list."""
@@ -746,8 +1129,10 @@ class MainWindow(QMainWindow):
 
     def stop(self) -> None:
         self.running = False
+        self.next_index = -1
         if not self.busy:
             self._clear_page()
+            self.current_index = -1
             self.set_status(self.tr("Stopped"))
         self._update_buttons()
 
@@ -755,14 +1140,90 @@ class MainWindow(QMainWindow):
         self.current = None
         self.editor.clear()
         self.diff.clear()
+        if not self.show_diff_action.isChecked():
+            self.diff.hide()
         self.review_summary.setEditText("")
+        self.start_tab.set_page_info(None)
         self.setWindowTitle(f"PyAutoWikiBrowser {__version__}")
-        self.tabs.setCurrentIndex(0)
         self._update_buttons()
 
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if not self._sized:  # first show: the editor gets the room, the controls ~40%
+            self._sized = True
+            width = self.bottom_splitter.width()
+            self.bottom_splitter.setSizes([width * 2 // 5, width - width * 2 // 5])
+
     def closeEvent(self, event: QCloseEvent) -> None:
+        busy = self.running or self.current is not None
+        if busy and self.config.preferences.warn_on_exit:
+            answer = QMessageBox.question(
+                self,
+                self.tr("Close"),
+                self.tr("A page is open or a run is going on. Close PyAutoWikiBrowser?"),
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
         self.running = False
         super().closeEvent(event)
+
+    # -- settings -----------------------------------------------------------------------------
+
+    def _wiki_script(self) -> str:
+        """The script of the wiki being worked on (or the default profile's), for its fonts."""
+        if self.session is not None:
+            lang = self.session.site.lang_code
+        else:
+            profile = self.config.profile()
+            lang = profile.lang if profile is not None else "en"
+        return script_for_language(lang)
+
+    def open_settings(self, page: str = "general") -> None:
+        """Settings → Theme / Language / Fonts / User profiles / Preferences."""
+        dialog = SettingsDialog(self.config, self._wiki_script(), page, self)
+        if not dialog.exec():
+            return
+        config = dialog.updated_config()
+        if config != self.config:
+            try:
+                appconfig.save(config)
+            except OSError as e:
+                QMessageBox.warning(self, self.tr("Settings"), str(e))
+            self.config = config
+        self.apply_preferences(config.preferences)
+
+    def apply_preferences(self, prefs: Preferences) -> None:
+        """Theme, interface language, fonts (for the wiki's script), word wrap."""
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            mode = theme.Mode(prefs.theme)
+            theme.apply(app, mode)
+            self.highlighter.set_dark(theme.resolve(mode) is theme.Mode.DARK)
+            app.setLayoutDirection(
+                Qt.LayoutDirection.RightToLeft
+                if is_rtl_language(prefs.language or self.lang)
+                else Qt.LayoutDirection.LeftToRight
+            )
+        language = prefs.language or ui_language()
+        if language != self.lang:
+            self.lang = language
+            self.messages = Messages(language, self.site.sitename)
+            self.set_site(self.site, self.session.site.rtl if self.session else False)
+        fonts = prefs.font_for(self._wiki_script())
+        editor_font = QFont(fonts.editor) if fonts.editor else QFont()
+        if fonts.editor_size:
+            editor_font.setPointSize(fonts.editor_size)
+        self.editor.setFont(editor_font)
+        self.highlighter.rehighlight()
+        self.diff.setFont(QFont(fonts.diff) if fonts.diff else editor_font)
+        if isinstance(app, QApplication) and fonts.interface:
+            app.setFont(QFont(fonts.interface))
+        self.editor.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+            if prefs.word_wrap
+            else QPlainTextEdit.LineWrapMode.NoWrap
+        )
 
     # -- wiki-specific editor setup -----------------------------------------------------------
 

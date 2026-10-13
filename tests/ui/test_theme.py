@@ -33,6 +33,7 @@ def test_apply_forces_fusion(qtbot: QtBot) -> None:
         assert app.palette().window().color().name() == expected
     finally:
         app.setStyleSheet("")
+        app.setProperty("pyawbTheme", None)  # applied again by the next test that asks
     # With a stylesheet set, style() is Qt's stylesheet proxy; check the real style without it.
     assert app.style().name().lower() == "fusion"
 
@@ -46,6 +47,12 @@ def _parse_messages(qss: str) -> list[str]:
     previous = qInstallMessageHandler(lambda _type, _ctx, msg: messages.append(msg))
     try:
         app.setStyleSheet(qss)
+        # Qt parses the stylesheet when a widget is polished, not in setStyleSheet
+        from PySide6.QtWidgets import QWidget
+
+        probe = QWidget()
+        probe.ensurePolished()
+        probe.deleteLater()
     finally:
         app.setStyleSheet("")
         qInstallMessageHandler(previous)

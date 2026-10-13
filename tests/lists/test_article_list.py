@@ -46,3 +46,17 @@ def test_replace_article_keeps_position() -> None:
     assert names(lst) == ["A", "Redirect", "Target"] and lst.selected_index == 2
     lst.replace_article("A", Article("Ä"))
     assert names(lst) == ["Ä", "Redirect", "Target"] and lst.selected_index == 0
+
+
+def test_progress_keeps_done_pages() -> None:
+    lst = make("A", "B", "C")
+    assert lst.next_pending() == 0 and lst.done_count == 0
+    lst.items[0].list_status = ArticleList.SAVED
+    lst.items[1].list_status = ArticleList.SKIPPED
+    assert lst.next_pending() == 2 and lst.next_pending(3) == -1 and lst.done_count == 2
+    lst.select(1)
+    lst.replace_article("B", Article("B2"))
+    assert lst.items[1].list_status == ArticleList.SKIPPED
+    lst.select(2)
+    lst.remove_done()
+    assert names(lst) == ["C"] and lst.selected_index == 0

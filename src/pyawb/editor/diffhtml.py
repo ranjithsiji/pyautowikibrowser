@@ -170,3 +170,63 @@ def qt_diff_html(
             + "</table>"
         )
     return f'<html><body dir="{direction}" style="color:{c.text}">{body}</body></html>'
+
+
+class _RowScanner(HTMLParser):
+    """Per <tr>: the classes of its cells, the right-hand "Line N:" number, if any."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[tuple[list[set[str]], int | None]] = []
+        self._cells: list[set[str]] = []
+        self._line: int | None = None
+        self._in_lineno = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "tr":
+            self._cells, self._line = [], None
+        elif tag == "td":
+            classes = set((dict(attrs).get("class") or "").split())
+            self._cells.append(classes)
+            self._in_lineno = "diff-lineno" in classes
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "tr":
+            self.rows.append((self._cells, self._line))
+        elif tag == "td":
+            self._in_lineno = False
+
+    def _number(self, text: str) -> None:
+        m = regex.search(r"\d+", text)
+        if m:
+            self._line = int(m.group())  # the last one in the row is the new text's
+
+    def handle_data(self, data: str) -> None:
+        if self._in_lineno:
+            self._number(data)
+
+    def handle_comment(self, data: str) -> None:
+        m = _LINE_COMMENT.fullmatch(f"<!--{data}-->")
+        if m:
+            self._number(m.group(1))
+
+
+def row_lines(rows: str) -> list[int | None]:
+    """For each table row of action=compare's diff, the 1-based line of the new text it shows (a
+    deleted line: where it was), or None for "Line N:" headers. Lets a click on the diff move the
+    editor to that line, as AWB and JWB do."""
+    scanner = _RowScanner()
+    scanner.feed(rows)
+    scanner.close()
+    out: list[int | None] = []
+    next_line = 1
+    for cells, line in scanner.rows:
+        if line is not None:
+            next_line = line
+            out.append(None)
+            continue
+        right = cells[-1] if cells else set()
+        out.append(next_line)
+        if right & {"diff-addedline", "diff-context"}:
+            next_line += 1
+    return out

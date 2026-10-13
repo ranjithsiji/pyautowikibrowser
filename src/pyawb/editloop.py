@@ -21,6 +21,7 @@ diff, wait for Save or Skip, remove the page from the list, start the next) stay
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 
 from pyawb.api.models import PageInfo, PageTitleStatus, SaveInfo, WatchOptions
@@ -32,6 +33,25 @@ from pyawb.core.parsers import parsers as _parsers
 from pyawb.core.parsers.hidetext import HideText
 from pyawb.core.parsers.parsers import Parsers
 from pyawb.core.site import use_site
+
+
+class Mode(enum.Enum):
+    """How the loop treats pages (not in AWB, which only has editing and pre-parse mode)."""
+
+    READ_ONLY = "read-only"  # open and show pages as they are: no processing, no saving
+    DRY_RUN = "dry-run"  # process and diff as when editing, but never save
+    EDIT = "edit"  # make changes: process, diff, save
+
+
+def available_modes(logged_in: bool, can_save: bool) -> tuple[Mode, ...]:
+    """The modes a user may choose: reading needs nothing, a dry run needs an account (the
+    wiki's user rights and {{bots}} rules depend on it), saving needs the CheckPage's approval."""
+    modes = [Mode.READ_ONLY]
+    if logged_in:
+        modes.append(Mode.DRY_RUN)
+    if logged_in and can_save:
+        modes.append(Mode.EDIT)
+    return tuple(modes)
 
 
 @dataclass
@@ -47,6 +67,7 @@ class LoopOptions:
     filter_non_main_space: bool = False  # skip redirects to other namespaces
     section_summary: bool = True
     summary: str = ""  # the user's edit summary
+    mode: Mode = Mode.EDIT
 
 
 @dataclass
@@ -63,6 +84,7 @@ class LoadResult:
     skip_reason: str | None = None
     summary: str = ""
     in_use: bool = False  # {{inuse}} without "skip if in use": AWB warns
+    mode: Mode = Mode.EDIT
     new_messages: bool = False  # the user has new talk page messages: AWB stops
 
     @property
@@ -100,7 +122,7 @@ class EditLoop:
 
         # with "skip if redirect" on, redirects are not followed even if "follow" is on too
         page = self.session.open(title, opts.follow_redirects and not opts.skip_if_redirect)
-        result = LoadResult(title, page)
+        result = LoadResult(title, page, mode=opts.mode)
 
         # LoadSuccessApi
         if not page.exists and opts.skip_non_existent:
@@ -117,6 +139,8 @@ class EditLoop:
         article = Article(page.title, page.text, page.namespace_id)
         article.display_title = page.display_title
         result.article = article
+        if opts.mode is Mode.READ_ONLY:
+            return result  # shown as it is: no skip checks, no processing
         if opts.skip_if_redirect and tools.is_redirect(page.text):
             return self._skip(result, "Page is a redirect")
         if opts.follow_redirects and page.was_redirected:
@@ -188,6 +212,8 @@ class EditLoop:
         page = result.page
         if page is None or result.article is None:
             raise ValueError("the page was not loaded")
+        if result.mode is not Mode.EDIT:
+            raise ValueError(f"pages loaded in {result.mode.value} mode are not saved")
         with use_site(self.session.site):
             summary = process.check_section_summary(
                 summary, result.article.original_article_text, text

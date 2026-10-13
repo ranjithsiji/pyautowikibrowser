@@ -189,6 +189,7 @@ class Article:
         self.plugin_edit_summary = ""
         self.plugin_skip = False
         self.pre_processed = False
+        self.list_status = ""  # PyAWB: "saved" / "skipped" once the edit loop is done with it
         self._summary: list[str] = []
         self._before = _FaRChange.NOT_RUN
         self._after = _FaRChange.NOT_RUN

@@ -131,7 +131,11 @@ def palette(mode: Mode) -> QPalette:
     return p
 
 
-def apply(app: QApplication, mode: Mode = Mode.SYSTEM) -> None:
+def apply(app: QApplication, mode: Mode = Mode.SYSTEM, *, force: bool = False) -> None:
+    """Fusion, the palette and the stylesheet for mode (skipped if mode is already applied)."""
+    if not force and app.property("pyawbTheme") == mode.value:
+        return
+    app.setProperty("pyawbTheme", mode.value)
     app.setStyle("Fusion")
     app.setPalette(palette(mode))
     app.setStyleSheet(stylesheet(mode))

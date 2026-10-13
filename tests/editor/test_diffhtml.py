@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pyawb.editor.diffhtml import DiffColors, qt_diff_html
+from pyawb.editor.diffhtml import DiffColors, qt_diff_html, row_lines
 
 # MediaWiki 1.45 action=compare output (shortened)
 MODERN = """<tr>
@@ -90,3 +90,12 @@ def test_rtl_rows_are_mirrored() -> None:
     assert ltr.index("−</td>") < ltr.index("+</td>")
     assert rtl.index("+</td>") < rtl.index("−</td>")
     assert "border-right:4px" in rtl and "border-right" not in ltr
+
+
+def test_row_lines() -> None:
+    # header, changed line 1, context line 2, added line 3
+    assert row_lines(MODERN) == [None, 1, 2, 3]
+    old = """<tr><td colspan="2"><!--LINE 5--></td><td colspan="2"><!--LINE 7--></td></tr>
+<tr><td>-</td><td class="diff-deletedline">gone</td><td colspan="2">&nbsp;</td></tr>
+<tr><td> </td><td class="diff-context">a</td><td> </td><td class="diff-context">a</td></tr>"""
+    assert row_lines(old) == [None, 7, 7]

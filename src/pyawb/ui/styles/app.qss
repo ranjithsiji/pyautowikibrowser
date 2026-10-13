@@ -208,6 +208,26 @@ QStatusBar {
     border-top: $border_width_base solid $border_color_subtle;
     color: $color_subtle;
 }
+/* AWB's user box: red "User:" when logged out, the name on green when logged in */
+QLabel#userLabel { padding: 1px 8px; color: $color_inverted_fixed; background: $background_color_destructive; }
+QLabel#userLabel[loggedIn="true"] { background: $color_success; }
+QLabel#positionLabel { padding: 0 8px; font-weight: bold; }
+/* the information bar: wiki, user, approval, mode (Codex's Info chip colours) */
+QWidget#infoChip { border-radius: 11px; border: $border_width_base solid $border_color_subtle; background: $background_color_neutral_subtle; }
+QWidget#infoChip[state="good"] { background: $background_color_success_subtle; border-color: $border_color_success; }
+QWidget#infoChip[state="warn"] { background: $background_color_warning_subtle; border-color: $border_color_warning; }
+QWidget#infoChip[state="bad"] { background: $background_color_error_subtle; border-color: $border_color_error; }
+QWidget#infoChip[state="mode"] { background: $background_color_progressive_subtle; border-color: $border_color_progressive; }
+QLabel#infoChipText { font-weight: bold; color: $color_base; }
+QLabel#infoChipText[state="mode"] { color: $color_progressive; }
+/* the toolbar's modes (and Pause): the active one in Codex's selected style */
+QToolButton#modeButton:checked {
+    background: $background_color_progressive_subtle;
+    color: $color_progressive;
+    border-color: $border_color_progressive;
+    font-weight: bold;
+}
+QLabel#warningLabel { color: $color_destructive; }
 QToolTip {
     background: $background_color_base;
     color: $color_base;

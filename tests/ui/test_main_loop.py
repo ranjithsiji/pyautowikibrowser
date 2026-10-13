@@ -1,11 +1,11 @@
-"""The main window's edit loop against a fake Arabic Wikipedia: start, diff, save, skip."""
+"""The main window's edit loop against a fake Arabic Wikipedia: modes, pause, save, skip."""
 
 from typing import Any
 
 from pytestqt.qtbot import QtBot
 
 from pyawb.core.article import Article
-from pyawb.editloop import EditLoop
+from pyawb.lists.listmaker import ArticleList
 from pyawb.ui.main_window import MainWindow
 from tests.api.test_editloop import open_response
 from tests.api.test_session import SAVE_OK, approved_session
@@ -26,8 +26,7 @@ def window(qtbot: QtBot, pages: dict[str, str | None]) -> tuple[MainWindow, Any]
     t.responses[("action", "edit")] = SAVE_OK
     w = MainWindow(language="ar")
     qtbot.addWidget(w)
-    w.session, w.loop = session, EditLoop(session)
-    w.set_text_direction(session.site.rtl)
+    w.use_session(session)
     w.list_maker.articles.add([Article(t) for t in pages])
     w.list_maker.refresh()
     w.summary.setEditText("تنظيف")
@@ -38,16 +37,26 @@ def idle(w: MainWindow) -> bool:
     return not w.busy
 
 
+def loaded(w: MainWindow, index: int) -> bool:
+    return w.current_index == index and w.current is not None and idle(w)
+
+
+def statuses(w: MainWindow) -> list[str]:
+    return [a.list_status for a in w.list_maker.articles]
+
+
 def test_start_shows_processed_text_and_diff_then_saves(qtbot: QtBot) -> None:
     w, t = window(qtbot, {"قط": "حيوان [[أليف|أليف]] صغير.", "كلب": "نص &eacute;"})
-    assert w.start_button.isEnabled()
+    w.show()
+    assert w.start_action.isEnabled() and not w.diff.isVisible()
+    assert w.position_label.text() == "0 / 2"  # nothing selected yet
     w.start()
     qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
     assert w.editor.toPlainText() == "حيوان [[أليف]] صغير."
     assert w.review_summary.currentText() == "/* top */ تنظيف"
-    assert w.tabs.currentWidget() is w.diff
-    assert "[[أليف]]" in w.diff.toPlainText()
-    assert w.save_button.isEnabled() and not w.start_button.isEnabled()
+    assert w.diff.isVisible() and "[[أليف]]" in w.diff.toPlainText()
+    assert w.save_button.isEnabled() and not w.start_action.isEnabled()
+    assert w.start_tab.stat_labels["links"].text() == "1"
 
     w.editor.setPlainText("حيوان [[أليف]] صغير جدا.")
     w.save()
@@ -56,21 +65,109 @@ def test_start_shows_processed_text_and_diff_then_saves(qtbot: QtBot) -> None:
     edit = t.last("edit")
     assert edit["text"] == "حيوان [[أليف]] صغير جدا." and edit["title"] == "قط"
     assert edit["summary"].startswith("/* top */ تنظيف")
-    assert [a.name for a in w.list_maker.articles] == ["كلب"]
+    assert statuses(w) == [ArticleList.SAVED, ""]
+    assert w.position_label.text() == "2 / 2" and w.progress.value() == 1
     assert w.editor.toPlainText() == "نص é"
+    assert w.logs.saved.pages() == ["قط"]
 
     w.skip_page("user")
     qtbot.waitUntil(lambda: not w.running and idle(w), timeout=5000)
-    assert w.skips == 1 and len(w.list_maker.articles) == 0
-    assert w.current is None and w.editor.toPlainText() == ""
+    assert w.skips == 1 and statuses(w) == [ArticleList.SAVED, ArticleList.SKIPPED]
+    assert w.current is None and w.editor.toPlainText() == "" and not w.diff.isVisible()
+    assert w.logs.skipped.rows()[0][2:] == ["User", "Clicked ignore"]
+    assert w.status_label.text() == "List complete!"
 
 
-def test_skipped_pages_are_removed_and_the_loop_goes_on(qtbot: QtBot) -> None:
+def test_skipped_pages_are_marked_and_the_loop_goes_on(qtbot: QtBot) -> None:
     w, _ = window(qtbot, {"نص": "نص", "مفقود": None, "قط": "حيوان [[أليف|أليف]]."})
     w.start()
     qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
     assert w.skips == 2  # no change, non-existent
+    assert statuses(w) == [ArticleList.SKIPPED, ArticleList.SKIPPED, ""]
+    assert [r[3] for r in w.logs.skipped.rows()] == ["No change", "Non-existent page"]
+    w.list_maker.remove_done()
     assert [a.name for a in w.list_maker.articles] == ["قط"]
+
+
+def test_pause_previous_next_and_skip(qtbot: QtBot) -> None:
+    w, _ = window(
+        qtbot, {"قط": "حيوان [[أليف|أليف]].", "كلب": "نص &eacute;", "حصان": "نص &eacute; ب"}
+    )
+    w.start()
+    qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
+    # a running batch moves by itself: Previous / Next only while paused
+    assert not w.previous_action.isEnabled() and not w.next_action.isEnabled()
+    w.set_paused(True)
+    assert not w.previous_action.isEnabled() and w.next_action.isEnabled()
+    w.next_page()
+    qtbot.waitUntil(lambda: loaded(w, 1), timeout=5000)
+    assert statuses(w) == ["", "", ""]  # Next leaves the page unmarked
+    w.previous_page()
+    qtbot.waitUntil(lambda: loaded(w, 0), timeout=5000)
+    assert w.editor.toPlainText() == "حيوان [[أليف]]."
+    # Skip moves on even when paused
+    w.skip_page("user")
+    qtbot.waitUntil(lambda: loaded(w, 1), timeout=5000)
+    # Save waits for Next when paused
+    w.save()
+    qtbot.waitUntil(lambda: w.edits == 1 and idle(w), timeout=5000)
+    assert w.current is None and w.next_index == 2 and w.next_action.isEnabled()
+    assert statuses(w) == [ArticleList.SKIPPED, ArticleList.SAVED, ""]
+    w.next_page()
+    qtbot.waitUntil(lambda: loaded(w, 2), timeout=5000)
+
+
+def test_unpausing_goes_on(qtbot: QtBot) -> None:
+    w, _ = window(qtbot, {"قط": "حيوان [[أليف|أليف]].", "كلب": "نص &eacute;"})
+    w.set_paused(True)
+    w.start()
+    qtbot.waitUntil(lambda: loaded(w, 0), timeout=5000)
+    w.save()
+    qtbot.waitUntil(lambda: w.edits == 1 and idle(w), timeout=5000)
+    assert w.current is None
+    w.set_paused(False)
+    qtbot.waitUntil(lambda: loaded(w, 1), timeout=5000)
+
+
+def test_modes(qtbot: QtBot) -> None:
+    from pyawb.editloop import Mode
+
+    w, t = window(qtbot, {"قط": "حيوان [[أليف|أليف]]."})
+    w.show()
+    assert w.mode is Mode.EDIT and all(a.isVisible() for a in w.mode_actions.values())
+    w.set_mode(Mode.READ_ONLY)
+    w.start()
+    qtbot.waitUntil(lambda: loaded(w, 0), timeout=5000)
+    assert w.editor.toPlainText() == "حيوان [[أليف|أليف]]." and w.editor.isReadOnly()
+    assert not w.diff.isVisible() and not w.save_action.isEnabled()
+    w.set_mode(Mode.DRY_RUN)
+    w.start()
+    qtbot.waitUntil(lambda: loaded(w, 0), timeout=5000)
+    assert w.editor.toPlainText() == "حيوان [[أليف]]." and not w.editor.isReadOnly()
+    assert w.skip_action.isEnabled() and not w.save_action.isEnabled()
+    w.save()
+    assert not any(p.get("action") == "edit" for p, _, _ in t.requests)
+    w.log_out()
+    assert [m for m, a in w.mode_actions.items() if a.isVisible()] == [Mode.READ_ONLY]
+    assert w.mode is Mode.READ_ONLY
+
+
+def test_diff_click_moves_the_editor(qtbot: QtBot) -> None:
+    w, _ = window(qtbot, {"قط": "سطر\nحيوان [[أليف|أليف]]."})
+    w.go_to_line(2)
+    assert w.editor.textCursor().blockNumber() == 0  # nothing loaded: one empty block
+    w.start()
+    qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
+    w.go_to_line(2)
+    assert w.editor.textCursor().blockNumber() == 1
+
+
+def test_find_in_editor(qtbot: QtBot) -> None:
+    w, _ = window(qtbot, {"قط": "حيوان [[أليف|أليف]] صغير."})
+    w.start()
+    qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
+    w.find_in_editor("صغ.ر", True, False)
+    assert w.editor.textCursor().selectedText() == "صغير"
 
 
 def test_start_needs_an_edit_summary(qtbot: QtBot, message_boxes: list[tuple[str, str]]) -> None:
@@ -87,8 +184,8 @@ def test_stop_keeps_the_page_in_the_list(qtbot: QtBot) -> None:
     qtbot.waitUntil(lambda: w.current is not None and idle(w), timeout=5000)
     w.stop()
     assert w.current is None and not w.running
-    assert [a.name for a in w.list_maker.articles] == ["قط"]
-    assert w.start_button.isEnabled()
+    assert statuses(w) == [""]
+    assert w.start_action.isEnabled()
 
 
 def test_manual_list(qtbot: QtBot) -> None:
@@ -155,3 +252,35 @@ def test_missing_typo_list(qtbot: QtBot, message_boxes: list[tuple[str, str]]) -
     qtbot.waitUntil(lambda: not w.typos_loading, timeout=5000)
     assert message_boxes and message_boxes[-1][0] == "question"  # English list? -> No
     assert not w.options.fix_typos.isChecked() and w.typos is None
+
+
+def test_list_maker_input_fits_the_source(qtbot: QtBot) -> None:
+    w = MainWindow(language="en")
+    qtbot.addWidget(w)
+    w.show()
+    lm = w.list_maker
+    assert lm.text.isVisible() and not lm.line.isVisible()  # Manual list: several lines
+    lm.source.setCurrentIndex(lm.source.findData("What links here (all NS) (and to redirects)"))
+    assert lm.line.isVisible() and not lm.text.isVisible()  # one value: one line
+    assert lm.line.height() < lm.text.height()
+    lm.source.setCurrentIndex(lm.source.findData("My watchlist"))
+    assert not lm.line.isVisible() and not lm.text.isVisible()  # no input
+
+
+def test_info_bar(qtbot: QtBot) -> None:
+    w = MainWindow(language="en")
+    qtbot.addWidget(w)
+    bar = w.info_bar
+    assert bar.wiki.text.text() == "No wiki" and bar.user.text.text() == "Not logged in"
+    assert bar.approval.isHidden() and bar.mode.text.text() == "Mode: Read only"
+
+    w2, _ = window(qtbot, {"قط": "x"})
+    bar = w2.info_bar
+    assert bar.wiki.text.text().endswith("(ar.wikipedia.org)")
+    assert bar.user.text.text() == "Alice"
+    assert bar.approval.text.text() == "Approved for editing"
+    assert bar.mode.text.text() == "Mode: Make changes"
+    from pyawb.editloop import Mode
+
+    w2.set_mode(Mode.DRY_RUN)
+    assert bar.mode.text.text() == "Mode: Dry run"

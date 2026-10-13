@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -22,9 +22,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -35,6 +35,7 @@ from pyawb.lists import sources
 from pyawb.lists.listmaker import ArticleList
 from pyawb.lists.sources import Input, Source, WikiContext
 from pyawb.lists.wikidataquery import EXAMPLE_QUERY, WikidataQueryListProvider
+from pyawb.ui.icons import codex_icon
 from pyawb.ui.tasks import run_task
 
 
@@ -69,12 +70,16 @@ class ListMaker(QWidget):
         fl.setContentsMargins(0, 0, 0, 0)
         fl.addWidget(self.file, 1)
         fl.addWidget(browse)
-        self.inputs = QStackedWidget(self)
-        self.inputs.addWidget(QWidget(self))  # Input.NONE
-        self.inputs.addWidget(self.line)
-        self.inputs.addWidget(self.text)
-        self.inputs.addWidget(file_row)
-        self._input_index = {Input.NONE: 0, Input.LINE: 1, Input.TEXT: 2, Input.FILE: 3}
+        # one input shown at a time, each at its own height (a QStackedWidget would give the
+        # single-line field the height of the multi-line box)
+        self._inputs: dict[Input, QWidget] = {
+            Input.LINE: self.line,
+            Input.TEXT: self.text,
+            Input.FILE: file_row,
+        }
+        # several values: a scrolling box of about eight lines, so the list keeps its room
+        line_height = self.text.fontMetrics().lineSpacing()
+        self.text.setFixedHeight(line_height * 8 + 12)
 
         self.namespace = QComboBox(self)
         self.make = QPushButton(self.tr("Make list"), self)
@@ -100,7 +105,8 @@ class ListMaker(QWidget):
         top.addWidget(QLabel(self.tr("Source"), self))
         top.addWidget(self.source)
         top.addWidget(self.label)
-        top.addWidget(self.inputs)
+        for widget in self._inputs.values():
+            top.addWidget(widget)
         ns_row = QHBoxLayout()
         ns_row.addWidget(self.namespace, 1)
         ns_row.addWidget(self.make)
@@ -147,8 +153,8 @@ class ListMaker(QWidget):
         src = self.current_source
         self.label.setText(self.tr(src.label) if src.label else "")
         self.label.setVisible(bool(src.label))
-        self.inputs.setCurrentIndex(self._input_index[src.input])
-        self.inputs.setVisible(src.input is not Input.NONE)
+        for kind, widget in self._inputs.items():
+            widget.setVisible(kind is src.input)
         self.text.setPlaceholderText(
             EXAMPLE_QUERY if src.provider is WikidataQueryListProvider else "Page one\nPage two"
         )
@@ -235,12 +241,26 @@ class ListMaker(QWidget):
         """Show the model (after it changed)."""
         self.list.blockSignals(True)
         self.list.clear()
-        self.list.addItems([a.name for a in self.articles])
-        selected = self.articles.get_selected_article_list()
-        if selected:
-            i = self.articles.selected_index
-            self.list.setCurrentRow(i)
-            self.list.scrollToItem(self.list.item(i))
+        icons = {
+            ArticleList.SAVED: codex_icon("check"),
+            ArticleList.SKIPPED: codex_icon("arrowNext"),
+        }
+        done_color = self.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+        current = self.articles.selected_index
+        for i, a in enumerate(self.articles):
+            item = QListWidgetItem(a.name)
+            if a.list_status:
+                item.setIcon(icons.get(a.list_status, QIcon()))
+                item.setForeground(done_color)
+                item.setToolTip(self.tr(a.list_status))
+            if i == current:
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            self.list.addItem(item)
+        if current >= 0:
+            self.list.setCurrentRow(current)
+            self.list.scrollToItem(self.list.item(current))
         self.list.blockSignals(False)
         self.count.setText(self.tr("%n page(s)", "", len(self.articles)))
         self._update_buttons()
@@ -275,6 +295,20 @@ class ListMaker(QWidget):
         article = self.articles.selected_article()
         self.refresh()
         return article
+
+    def mark(self, index: int, status: str) -> None:
+        """The loop is done with the page at index (ArticleList.SAVED / SKIPPED)."""
+        if 0 <= index < len(self.articles):
+            self.articles.items[index].list_status = status
+            self.refresh()
+
+    def select_index(self, index: int) -> None:
+        self.articles.select(index)
+        self.refresh()
+
+    def remove_done(self) -> None:
+        self.articles.remove_done()
+        self.refresh()
 
     def remove_article(self, article: Article | str) -> bool:
         removed = self.articles.remove(article)

@@ -354,3 +354,114 @@ def clean_file_input(text: str, site: SiteConfig | None = None) -> str:
     return DotNetRegex(
         "^" + rx.escape(site.namespaces[Namespace.FILE]), DotNetOptions.IGNORE_CASE
     ).replace(text, "")
+
+
+# -- MainForm.ArticleInfo: page statistics and alerts ------------------------------------------
+
+
+@dataclass(frozen=True)
+class PageStatistics:
+    words: int = 0
+    links: int = 0
+    images: int = 0
+    categories: int = 0
+    interwiki_links: int = 0
+    dates_iso: int = 0
+    dates_international: int = 0
+    dates_american: int = 0
+
+    @property
+    def dates(self) -> str:
+        """AWB's "Dates O/I/A" (ISO / international / American)."""
+        return f"{self.dates_iso}/{self.dates_international}/{self.dates_american}"
+
+
+@dataclass(frozen=True)
+class PageInfo:
+    """What AWB's Start tab shows for the page being edited."""
+
+    statistics: PageStatistics
+    alerts: tuple[str, ...]
+    multiple_wikilinks: tuple[str, ...]  # "Target (count)"
+
+
+def page_info(text: str, article: Article) -> PageInfo:
+    """MainForm.ArticleInfo for the edited text (all alerts on, as AWB with no alert preferences).
+    article supplies the name and namespace; its alert checks are run on text."""
+    from pyawb.core.parsers.templates import get_all_template_detail
+
+    s = W.for_site(current_site())
+    info = Article(article.name, text, article.namespace_key)
+    is_article = info.namespace_key == namespace.Namespace.ARTICLE
+    templates = "".join(get_all_template_detail(text))
+    word_count = tools.word_count(text)
+    cat_count = len(s.Category.matches(text))
+    alerts: list[str] = []
+
+    def counted(label: str, found: Collection[object]) -> None:
+        if found:
+            alerts.append(f"{label} ({len(found)})")
+
+    if is_article and word_count > _parsers.StubMaxWordCount and s.Stub.is_match(templates):
+        alerts.append("Long article with a stub tag.")
+    if cat_count == 0 and not namespace.is_talk(info.name):
+        alerts.append("No category (may be one in a template)")
+    if is_article and info.has_morefootnotes_and_many_references:
+        alerts.append("Has 'No/More footnotes' template yet many references")
+    if info.has_ref_after_reflist:
+        alerts.append("Has a <ref> after <references/>")
+    if info.is_disambiguation_page_with_refs:
+        alerts.append("DAB page with <ref>s")
+    if is_article and text.startswith("=="):
+        alerts.append("Starts with heading")
+    if info.has_bare_references:
+        alerts.append("Unformatted references")
+    if len(s.Defaultsort.matches(templates)) > 1:
+        alerts.append("Multiple DEFAULTSORTs")
+    counted("Dead links", info.dead_links())
+    counted("Ambiguous citation dates", info.ambiguous_cite_template_dates())
+    counted("Unbalanced brackets", info.unbalanced_brackets())
+    counted("Invalid citation parameter(s)", info.bad_cite_parameters())
+    counted("Links with no target", info.targetless_links())
+    counted("Links with double pipes", info.doublepipe_links())
+    counted(
+        "Duplicate parameter(s) in WPBannerShell",
+        info.duplicate_wiki_project_banner_shell_parameters(),
+    )
+    unknown = info.unknown_wiki_project_banner_shell_parameters()
+    if unknown:
+        alerts.append(
+            "Unknown parameters in WikiProject banner shell:  "
+            f"({len(unknown)}) " + ",".join(unknown)
+        )
+    unknown = info.unknown_multiple_issues_parameters()
+    if unknown:
+        alerts.append(
+            f"Unknown parameters in Multiple issues:  ({len(unknown)}) " + ", ".join(unknown)
+        )
+    counted("Header(s) with wikilinks", info.wiki_linked_headers())
+    counted("Unclosed tag(s)", info.unclosed_tags())
+    if info.has_see_also_after_notes_references_or_external_links:
+        alerts.append("See also section out of place")
+    if info.has_sic_tag:
+        alerts.append("Contains 'sic' tag")
+    if is_article:
+        counted("Editor's signature or link to user space", info.user_signature())
+
+    images = s.ImagesCountOnly.matches(text)
+    no_images_urls = W.ExternalLinksHTTPOnlyQuick.replace(
+        tools.replace_with_spaces(text, images), ""
+    )
+    dates = tools.dates_count(no_images_urls)
+    locale = _parsers.DateLocale
+    stats = PageStatistics(
+        words=word_count,
+        links=tools.link_count(text),
+        images=len(images),
+        categories=cat_count,
+        interwiki_links=tools.interwiki_count(text),
+        dates_iso=dates[locale.ISO],
+        dates_international=dates[locale.INTERNATIONAL],
+        dates_american=dates[locale.AMERICAN],
+    )
+    return PageInfo(stats, tuple(alerts), tuple(tools.duplicate_wiki_links(text)))

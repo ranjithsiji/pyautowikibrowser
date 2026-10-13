@@ -136,3 +136,27 @@ def test_clean_file_input() -> None:
     assert process.clean_file_input("File:A.jpg") == "A.jpg"
     assert process.clean_file_input("file:B.png") == "B.png"
     assert process.clean_file_input("Image:C.png") == "Image:C.png"  # as AWB: the wiki's name only
+
+
+def test_page_info_statistics_and_alerts() -> None:
+    text = (
+        "'''Foo''' is a [[bar]] and [[bar]] with [[baz|qux]] [[File:x.jpg|thumb]] on 2020-01-05 "
+        "and 5 May 2020.\n[[Category:X]]\n== [[Link]] =="
+    )
+    info = process.page_info(text, Article("Foo"))
+    s = info.statistics
+    assert (s.links, s.images, s.categories) == (4, 1, 1)
+    assert s.dates == "1/1/0"
+    assert info.alerts == ("Header(s) with wikilinks (1)",)
+    assert info.multiple_wikilinks == ("Bar (2)",)
+
+
+def test_page_info_alerts_for_a_bare_page() -> None:
+    info = process.page_info("==H==\nx [[a]] [[b|", Article("Foo"))
+    assert info.alerts == (
+        "No category (may be one in a template)",
+        "Starts with heading",
+        "Unbalanced brackets (1)",
+    )
+    talk = process.page_info("x", Article("Talk:Foo"))
+    assert "No category (may be one in a template)" not in talk.alerts

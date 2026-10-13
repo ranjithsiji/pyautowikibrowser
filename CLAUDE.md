@@ -232,8 +232,17 @@ Run tests and pyright before calling any task done.
    Find & replace table (`ui/find_replace_dialog.py`, rows as `rules.findreplace.ReplacementRow`), typo
    fixing with the wiki's list (`api/typolist.py`: Config `typolink` or Project:AutoWikiBrowser/Typos,
    English Wikipedia's list offered when there is none), More tab (append/prepend, categories, files).
-   Next: bot mode with the save delay, logging tab, the native word-level diff (wikidiff2 port); find &
-   replace rules and options are kept only for the session until settings files (step 6).
+   Main window redone after AWB's layout and the user's requests (docs/design/awb-ui-reference.md, which
+   also records the study of AWB's Commons screenshots and JWB): page list full height on the left;
+   diff on top (shown once a page is loaded; click a line to go there); control tabs (Options, More,
+   Skip, Start with statistics/alerts from AWB's ArticleInfo, `core.process.page_info`) and edit tabs
+   (Edit box, Logs); information bar (wiki, user, CheckPage, mode); toolbar with modes (Read only, Dry
+   run, Make changes: `editloop.Mode`), Start/Stop, Previous/Pause/Next, Save/Skip, Preview/Diff and an
+   x/N progress; done pages stay in the list marked saved/skipped. Settings menu (theme, interface
+   language from Meta-Wiki's languageinfo, fonts per script, user profiles, preferences) saved in
+   config.toml. Next: the start screen (language, wiki, fonts, login with two-factor or the wiki's own
+   login page, list), projects; then bot mode with the save delay, the native word-level diff (wikidiff2
+   port); find & replace rules are kept only for the session until project files.
    UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.

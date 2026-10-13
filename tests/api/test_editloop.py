@@ -134,3 +134,40 @@ def test_clean_inputs_use_the_wikis_namespaces() -> None:
     session = approved_session()[0]
     assert process.clean_category_input("[[تصنيف:قطط]]", session.site) == "قطط"
     assert process.clean_file_input("ملف:قط.jpg", session.site) == "قط.jpg"
+
+
+def test_modes() -> None:
+    from pyawb.editloop import Mode, available_modes
+
+    assert available_modes(False, False) == (Mode.READ_ONLY,)
+    assert available_modes(True, False) == (Mode.READ_ONLY, Mode.DRY_RUN)
+    assert available_modes(True, True) == (Mode.READ_ONLY, Mode.DRY_RUN, Mode.EDIT)
+
+
+def test_read_only_shows_the_page_unprocessed_and_never_saves() -> None:
+    import pytest
+
+    from pyawb.editloop import Mode
+
+    loop, _ = loop_with("قط", open_response("قط", "نص &eacute; {{nobots}}"))
+    options = opts()
+    options.mode = Mode.READ_ONLY
+    result = loop.load("قط", options)
+    assert not result.skipped and result.text == "نص &eacute; {{nobots}}"
+    with pytest.raises(ValueError):
+        loop.save(result, result.text, "x")
+
+
+def test_dry_run_processes_but_never_saves() -> None:
+    import pytest
+
+    from pyawb.editloop import Mode
+
+    loop, t = loop_with("قط", open_response("قط", "نص &eacute;"))
+    options = opts()
+    options.mode = Mode.DRY_RUN
+    result = loop.load("قط", options)
+    assert result.text == "نص é"
+    with pytest.raises(ValueError):
+        loop.save(result, result.text, "x")
+    assert not any(p.get("action") == "edit" for p, _, _ in t.requests)

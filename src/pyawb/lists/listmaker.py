@@ -138,6 +138,34 @@ class ArticleList:
         if new_index >= 0:
             self._selected.add(new_index)
 
+    # -- progress (PyAWB keeps pages it is done with, marked, so the loop can go back) ---------
+
+    SAVED = "saved"
+    SKIPPED = "skipped"
+
+    @property
+    def done_count(self) -> int:
+        return sum(1 for a in self.items if a.list_status)
+
+    def next_pending(self, start: int = 0) -> int:
+        """The first page at or after start that the loop has not done, or -1."""
+        for i in range(max(start, 0), len(self.items)):
+            if not self.items[i].list_status:
+                return i
+        return -1
+
+    def select(self, index: int) -> None:
+        """Make index the only selected page (the page the loop is on)."""
+        self._selected = {index} if 0 <= index < len(self.items) else set()
+
+    def remove_done(self) -> None:
+        """Remove the pages the loop has saved or skipped (AWB removes them as it goes)."""
+        current = self.selected_article()
+        self.items = [a for a in self.items if not a.list_status]
+        self._selected = set()
+        if current is not None and current in self.items:
+            self._selected.add(self.items.index(current))
+
     # -- the edit loop (ListMaker.SelectedArticle, Remove, ReplaceArticle) ----------------------
 
     def selected_article(self) -> Article | None:
@@ -173,6 +201,7 @@ class ArticleList:
             position = self.selected_index
         else:
             position = self.items.index(old)  # type: ignore[arg-type]
+        new.list_status = self.items[position].list_status
         del self.items[position]
         self._selected.clear()
         self.items.insert(position, new)

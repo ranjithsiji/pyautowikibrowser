@@ -35,11 +35,12 @@ import json
 import os
 import tomllib
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
 from pyawb.paths import config_dir
+from pyawb.settings.preferences import ON_LOAD, THEMES, FontChoice, Preferences
 
 CONFIG_FILE = "config.toml"
 
@@ -83,6 +84,7 @@ class AppConfig:
     profiles: tuple[Profile, ...] = ()
     default_profile: str = ""
     user_agent_contact: str = DEFAULT_USER_AGENT_CONTACT
+    preferences: Preferences = field(default_factory=Preferences)
 
     def profile(self, name: str | None = None) -> Profile | None:
         """The named profile, or the default one, or the first."""
@@ -149,12 +151,52 @@ def parse(text: str) -> AppConfig:
         profiles=profiles,
         default_profile=str(data.get("default_profile", "")),
         user_agent_contact=str(data.get("user_agent_contact", DEFAULT_USER_AGENT_CONTACT)),
+        preferences=_preferences(data.get("preferences", {}), data.get("fonts", {})),
     )
 
 
-def _toml_value(value: str | bool) -> str:
+def _preferences(raw: Any, raw_fonts: Any) -> Preferences:
+    """[preferences] and [fonts.<script>]; unknown keys and bad values fall back to defaults (a
+    preference is never a reason to refuse the whole file)."""
+    p: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}  # pyright: ignore[reportUnknownVariableType]
+    d = Preferences()
+
+    def choice(key: str, allowed: tuple[str, ...], default: str) -> str:
+        value = p.get(key, default)
+        return value if value in allowed else default
+
+    def flag(key: str, default: bool) -> bool:
+        value = p.get(key, default)
+        return value if isinstance(value, bool) else default
+
+    fonts: dict[str, FontChoice] = {}
+    if isinstance(raw_fonts, Mapping):
+        for script, f in raw_fonts.items():  # pyright: ignore[reportUnknownVariableType]
+            if isinstance(f, Mapping):
+                fm: Mapping[str, Any] = f  # pyright: ignore[reportUnknownVariableType]
+                size = fm.get("editor_size", 0)
+                fonts[str(script)] = FontChoice(
+                    editor=str(fm.get("editor", "")),
+                    editor_size=size if isinstance(size, int) and 0 <= size <= 72 else 0,
+                    interface=str(fm.get("interface", "")),
+                    diff=str(fm.get("diff", "")),
+                )
+    language = p.get("language", "")
+    return Preferences(
+        theme=choice("theme", THEMES, d.theme),
+        language=language if isinstance(language, str) else "",
+        on_load=choice("on_load", ON_LOAD, d.on_load),
+        warn_on_exit=flag("warn_on_exit", d.warn_on_exit),
+        word_wrap=flag("word_wrap", d.word_wrap),
+        fonts=fonts,
+    )
+
+
+def _toml_value(value: str | bool | int) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
     # JSON string escapes are valid TOML basic-string escapes
     return json.dumps(value, ensure_ascii=False)
 
@@ -165,6 +207,18 @@ def dumps(config: AppConfig) -> str:
         f"user_agent_contact = {_toml_value(config.user_agent_contact)}",
         f"default_profile = {_toml_value(config.default_profile)}",
     ]
+    prefs = config.preferences
+    lines += ["", "[preferences]"]
+    for key in ("theme", "language", "on_load", "warn_on_exit", "word_wrap"):
+        lines.append(f"{key} = {_toml_value(getattr(prefs, key))}")
+    for script, f in sorted(prefs.fonts.items()):
+        lines += ["", f"[fonts.{json.dumps(script, ensure_ascii=False)}]"]
+        lines += [
+            f"editor = {_toml_value(f.editor)}",
+            f"editor_size = {_toml_value(f.editor_size)}",
+            f"interface = {_toml_value(f.interface)}",
+            f"diff = {_toml_value(f.diff)}",
+        ]
     for p in config.profiles:
         lines += ["", "[[profiles]]"]
         lines += [f"{f} = {_toml_value(getattr(p, f))}" for f in _PROFILE_FIELDS]
