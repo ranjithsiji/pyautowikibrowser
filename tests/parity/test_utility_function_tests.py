@@ -8,8 +8,12 @@ with a comment explaining why.
 # ruff: noqa: F841, F401, E501
 # pyright: reportUnusedVariable=false
 
+from collections.abc import Mapping
+from typing import Any
+
 import pytest
 
+from awb_l.api.transport import Param
 from awb_l.core import genfixes, namespace, tools
 from awb_l.core import wikiregexes as W
 from awb_l.core.dotnet_regex import DotNetOptions as O
@@ -1569,38 +1573,47 @@ def test_fix_unicode() -> None:
     assert parser.fix_unicode(r"foo" + "\r\n" + r"​​bar") == "foo\r\nbar"
 
 
-@pytest.mark.skip(
-    reason="SubstUserTemplates expands templates through the wiki API (roadmap step 4)"
-)
+class _UnitTestExpansion:
+    """AWB's UnitTestMode expansion result, served through the real API expander."""
+
+    def request(
+        self, params: Mapping[str, Param], *, post: bool = False, token: str | None = None
+    ) -> Mapping[str, Any]:
+        return {"expandtemplates": {"wikitext": "Expanded template test return"}}
+
+
+def subst_user_templates(text: str, title: str, regex: DotNetRegex | None) -> str:
+    from awb_l.api.tagger import WikiTemplateExpander
+
+    expander = WikiTemplateExpander(_UnitTestExpansion())
+    return genfixes.subst_user_templates(text, title, regex, expander)
+
+
 def test_subst_user_templates() -> None:
     S = W.for_site(EN)
     Hello = DotNetRegex(r"{{hello.*?}}")
     assert (
-        genfixes.subst_user_templates(r"Text {{hello|2010}}", r"test", Hello)
+        subst_user_templates(r"Text {{hello|2010}}", r"test", Hello)
         == r"Text Expanded template test return<!-- {{hello|2010}} -->"
     ), r"performs single substitution"
     assert (
-        genfixes.subst_user_templates(r"Text {{hello}}", r"test", Hello)
+        subst_user_templates(r"Text {{hello}}", r"test", Hello)
         == r"Text Expanded template test return<!-- {{hello}} -->"
     ), r"performs single substitution"
     assert (
-        genfixes.subst_user_templates("Text {{hello}}\r\n{{hello2}}", r"test", Hello)
+        subst_user_templates("Text {{hello}}\r\n{{hello2}}", r"test", Hello)
         == "Text Expanded template test return<!-- {{hello}} -->\r\nExpanded template test return<!-- {{hello2}} -->"
     ), r"performs multiple subsitutions"
     Bye = r"Text {{bye}}"
-    assert genfixes.subst_user_templates(Bye, r"test", Hello) == Bye, (
-        r"no changes if no matching template"
-    )
+    assert subst_user_templates(Bye, r"test", Hello) == Bye, r"no changes if no matching template"
     Subst = r"Now {{{subst:bar}}} text"
-    assert genfixes.subst_user_templates(Subst, r"test", Hello) == Subst, r"doesn't change {{{subst"
+    assert subst_user_templates(Subst, r"test", Hello) == Subst, r"doesn't change {{{subst"
     Null = None
-    assert genfixes.subst_user_templates(Bye, r"test", Null) == Bye, (
+    assert subst_user_templates(Bye, r"test", Null) == Bye, (
         r"no changes when user talk page regex is null"
     )
     T2 = r"Test {{{2|}}}"
-    assert genfixes.subst_user_templates(T2, r"test", Hello) == r"Test", (
-        r"cleans up the {{{2|}}} template"
-    )
+    assert subst_user_templates(T2, r"test", Hello) == r"Test", r"cleans up the {{{2|}}} template"
 
 
 def test_format_to_bda() -> None:

@@ -92,8 +92,8 @@ src/awb_l/
     wikiregexes.py   # port of WikiRegexes.cs: static names at module level, per-wiki on SiteRegexes
     tools.py         # port of Tools.cs (minus HTTP/UI/file helpers)
     article.py       # one page's processing pipeline
-  api/               # pywikibot wrapper: session, CheckPage, scheduler, edit/save
-  lists/             # list providers (wrap pywikibot pagegenerators)
+  api/               # pywikibot wrapper: transport, session, CheckPage, siteinfo, Wikidata, cache
+  lists/             # page list model, AWB list providers, pywikibot pagegenerators
   rules/             # find & replace, typo lists, skip conditions
   scripting/         # custom Python modules, sandbox-ish runner with timeout
   plugins/           # plugin API and loader
@@ -173,17 +173,24 @@ Run tests and pyright before calling any task done.
 1. Done: skeleton, package layout, CI on ubuntu/macos/windows.
 2. Done: `core/rx.py` + `dotnet_regex.py` + multilingual Unicode tests; all enwiki typo rules compile.
 3. Done: `WikiRegexes`, `Tools`, `Parse/*`, `Article.cs` (the general-fixes pipeline, `core/article.py`),
-   `TalkPageFixes.cs`, typo fixing (`rules/typos.py`) and find and replace (`rules/findreplace.py`). Every
-   ported AWB test file passes; the 5 skips are .NET/UI-only or wait on `api/` or the article comparers.
-   Tagger's wiki lookups (categories, incoming/outgoing links) go through `parsers.tagger.TaggerLookups`,
-   implemented in `api/` in step 4. Still to port with their tests: skip conditions and article comparers
-   (`Article/Comparers`), advanced find and replace (`ReplaceSpecial`), template substitution
-   (`SubstTemplates`), list comparer/maker tests.
-4. `api/`: login, CheckPage, siteinfo, fetch/save, scheduler; `lists/` via pagegenerators. Wikidata: fetch items
-   (batched `wbgetentities`) for sitelinks (flag/remove local interwikis Wikidata already has, report conflicts),
-   P569/P570 birth/death dates (people categories, person detection, DEFAULTSORT), short description,
-   coordinates, authority control. Fetching lives in `api/`; `core/` functions take the data as plain inputs so
-   tests stay offline.
+   `TalkPageFixes.cs`, typo fixing (`rules/typos.py`), find and replace (`rules/findreplace.py`), advanced
+   find and replace (`rules/replacespecial.py`), template substitution (`rules/substtemplates.py`), skip
+   comparers (`rules/skip.py`) and the page list model (`lists/listmaker.py`). Every AWB test file passes
+   except `DiffTests.cs` (ported with the native diff in step 5) and `CacheTests.cs` (with `api/`); the 4
+   skips are .NET/UI-only or need `api/`. Tagger's wiki lookups go through `parsers.tagger.TaggerLookups`,
+   implemented in `api/` in step 4.
+4. Mostly done: `api/` (everything written against a `Transport` protocol; `PywikibotTransport` is the real one,
+   tests use a fake): siteinfo -> `SiteConfig` (namespaces, aliases, magic words, RTL, month names, summary tag,
+   AWB config pages, interwiki order, site matrix), login with bot passwords (keychain via `api/credentials.py`),
+   the CheckPage gate (`api/checkpage.py`, enforced in `WikiSession.save`), open/save with
+   `baserevid`/`basetimestamp`/`starttimestamp`/`assert=user`, preview, `action=compare`, expandtemplates,
+   Tagger lookups, ObjectCache (`CacheTests.cs` passes). `lists/providers.py` ports AWB's API list providers;
+   `lists/pagegenerators.py` exposes pywikibot's generators. Wikidata: `api/wikidata.py` fetches (batched
+   `wbgetentities`), `core/wikidata.py` holds items and the interwiki-vs-sitelinks check/removal.
+   Open: User-Agent contact URL; whether AWB-L requires its own entry in the global VersionJSON
+   (`WikiSession(require_enabled_version=...)`, off for now) and may use the "AWB" change tag; OAuth; the edit
+   scheduler (delay between saves) belongs with the save loop in step 5; Wikidata dates/description not yet
+   used by the category and DEFAULTSORT fixes.
 5. UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.

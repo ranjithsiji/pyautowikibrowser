@@ -208,6 +208,9 @@ class Article:
         return self.name
 
     def __eq__(self, other: object) -> bool:
+        # AWB's Article.Equals: another Article, or a string, with the same name
+        if isinstance(other, str):
+            return self.name == other
         return isinstance(other, Article) and other.name == self.name
 
     def __hash__(self) -> int:

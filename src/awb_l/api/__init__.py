@@ -8,4 +8,12 @@
 # This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 # without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
-"""Thin wrapper over pywikibot. All wiki API calls go through here."""
+"""All wiki API calls go through here (a thin layer over pywikibot).
+
+- transport: the Transport protocol and PywikibotTransport (pywikibot configured in code)
+- session: WikiSession: site configuration, login, the CheckPage gate, open/save/preview/diff
+- siteinfo, checkpage, models, errors: parsing API responses (pure, tested offline)
+- wikidata: batched wbgetentities into core.wikidata items
+- tagger: Tagger's wiki lookups and template expansion
+- cache: ObjectCache; credentials: bot passwords in the OS keychain
+"""

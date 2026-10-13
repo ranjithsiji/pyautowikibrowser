@@ -392,7 +392,39 @@ def assert_that(e):
     e.take(")")
     return f"assert {cond}" + (f", {msg}" if msg else "")
 
+def split_statements(body):
+    """Statements at depth 0: ended by ";" or by the "}" closing a block (foreach/if bodies).
+    Anything left over is kept so that it is reported, never silently dropped."""
+    stmts, cur, d = [], [], 0
+    for tok in body:
+        if tok[1] in "([{": d += 1
+        if tok[1] in ")]}": d -= 1
+        if tok[1] == ";" and d == 0:
+            stmts.append(cur); cur = []
+        else:
+            cur.append(tok)
+            if tok[1] == "}" and d == 0 and not (cur and cur[0][1] == "{"):
+                stmts.append(cur); cur = []
+    if cur:
+        stmts.append(cur)
+    return stmts
+
+
+def block(toks):
+    """Python lines for a statement or a { ... } block."""
+    if toks and toks[0][1] == "{":
+        if toks[-1][1] != "}": raise Unsupported("unclosed block")
+        lines = [statement(st) for st in split_statements(toks[1:-1]) if st]
+        lines = [l for l in lines if l]
+    else:
+        line = statement(toks)
+        lines = [line] if line else []
+    return "\n".join(lines) or "pass"
+
+
 def statement(toks):
+    if [t for _, t in toks] == ["break"]:
+        return "break"
     if len(toks) == 2 and toks[0][0] == "id" and toks[1][0] == "id":
         return None  # bare declaration, e.g. "bool noChange;"
     if toks and toks[0][1] == "const":
@@ -428,9 +460,9 @@ def statement(toks):
         # foreach (T x in expr) statement;  (single-statement body without braces)
         e.take(); e.take("("); e.take()
         _, var = e.take(); e.take("in"); seq = e.expr(); e.take(")")
-        body = statement(e.t[e.i:])
+        body = block(e.t[e.i:])
         e.i = len(e.t)
-        out = f"for {var} in {seq}:\n" + "\n".join("    " + line for line in (body or "pass").split("\n"))
+        out = f"for {var} in {seq}:\n" + "\n".join("    " + line for line in body.split("\n"))
     elif t == "Variables.Namespaces.Remove":
         e.take(); a = e.args()
         out = f"S = set_site(namespaces={{k: v for k, v in current_site().namespaces.items() if k != {a[0]}}})"
@@ -557,13 +589,7 @@ def main():
                 k += 1
             body = toks[j + 1:k]
             # split statements at ; (depth 0)
-            stmts, cur, d = [], [], 0
-            for tok in body:
-                if tok[1] in "([{": d += 1
-                if tok[1] in ")]}": d -= 1
-                if tok[1] == ";" and d == 0:
-                    stmts.append(cur); cur = []
-                else: cur.append(tok)
+            stmts = split_statements(body)
             # two fixtures in one file can have tests of the same name: qualify the later ones
             pyname = snake(name) if snake(name) not in used else f"{snake(cls)}_{snake(name)}"
             used.add(pyname)
