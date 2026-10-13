@@ -852,6 +852,34 @@ class TextFileListProviderWindows1252(TextFileListProvider):
     encoding: str = "cp1252"
 
 
+_PasteSplit = DotNetRegex(r"\r\n|\n|\|")
+
+
+def titles_from_paste(text: str) -> list[Article]:
+    """Titles typed or pasted into the list (ListMaker's Add button and Paste): one per line or
+    separated by "|", as titles, [[links]] or page URLs."""
+    out: list[Article] = []
+    for entry in _PasteSplit.split(text):
+        if entry.strip():
+            s = tools.remove_syntax(tools.normalize_title_core(entry))
+            if current_site().capitalize_first_letter:
+                s = turn_first_to_upper(s)
+            if s:
+                out.append(Article(s))
+    return out
+
+
+@dataclass
+class ManualListProvider(ListProvider):
+    """Pages typed or pasted in by the user (AWB's Add box and Paste, as a list source)."""
+
+    display_text: ClassVar[str] = "Manual list"
+    user_input_text: ClassVar[str] = "Pages (one per line):"
+
+    def make_list(self, *criteria: str) -> list[Article]:
+        return [a for c in criteria for a in titles_from_paste(c)]
+
+
 API_PROVIDERS: Sequence[type[ApiListProvider]] = (
     CategoryListProvider,
     CategoryRecursiveListProvider,

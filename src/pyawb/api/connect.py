@@ -33,6 +33,12 @@ def open_session(config: AppConfig, profile: Profile) -> WikiSession:
     return WikiSession(transport, site, global_transport=global_transport)
 
 
+def wikidata_transport(config: AppConfig) -> PywikibotTransport:
+    """Wikidata's API (sitelinks for Wikidata query lists), read-only and not logged in."""
+    load_pywikibot(contact=config.user_agent_contact)
+    return PywikibotTransport(pywikibot_site("wikidata", "wikidata"))
+
+
 def log_in(
     session: WikiSession,
     profile: Profile,
@@ -55,3 +61,18 @@ def log_in(
     elif remembered is not None:
         credentials.forget_password(profile.wiki_url, profile.username, keyring)
     return user
+
+
+def connect(
+    config: AppConfig,
+    profile: Profile,
+    password: str | None = None,
+    *,
+    keyring: KeyringBackend | None = None,
+) -> WikiSession:
+    """Open the profile's wiki, load its configuration and log in (the CheckPage is checked as
+    part of logging in). Blocking: run it off the UI thread."""
+    session = open_session(config, profile)
+    session.load_site()
+    log_in(session, profile, password, keyring=keyring)
+    return session

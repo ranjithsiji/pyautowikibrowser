@@ -138,6 +138,46 @@ class ArticleList:
         if new_index >= 0:
             self._selected.add(new_index)
 
+    # -- the edit loop (ListMaker.SelectedArticle, Remove, ReplaceArticle) ----------------------
+
+    def selected_article(self) -> Article | None:
+        """The first selected page; selects the first page if none is (None if the list is
+        empty)."""
+        if not self.items:
+            return None
+        if not self._selected:
+            self._selected.add(0)
+        return self.items[self.selected_index]
+
+    def remove(self, item: Article | str) -> bool:
+        """Remove the first instance of a page (after saving or skipping it) and select the page
+        that takes its place. False if it is not in the list."""
+        if item not in self.items:
+            return False
+        if len(self._selected) == 1 and self.items[self.selected_index] == item:
+            self.remove_selected()
+            return True
+        position = self.items.index(item)  # type: ignore[arg-type]
+        self._selected.clear()
+        del self.items[position]
+        if len(self.items) == position:
+            position -= 1
+        if self.items:
+            self._selected.add(position)
+        return True
+
+    def replace_article(self, old: Article | str, new: Article) -> None:
+        """Put new where old is (a followed redirect, a normalised title) and select it. Where
+        old is selected, that instance is replaced, not an earlier duplicate."""
+        if len(self._selected) == 1 and self.items[self.selected_index] == old:
+            position = self.selected_index
+        else:
+            position = self.items.index(old)  # type: ignore[arg-type]
+        del self.items[position]
+        self._selected.clear()
+        self.items.insert(position, new)
+        self._selected.add(position)
+
 
 def compare_lists(
     list1: Sequence[Article], list2: Sequence[Article]

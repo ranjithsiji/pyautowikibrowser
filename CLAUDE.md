@@ -101,13 +101,17 @@ src/pyawb/
     wikiregexes.py   # port of WikiRegexes.cs: static names at module level, per-wiki on SiteRegexes
     tools.py         # port of Tools.cs (minus HTTP/UI/file helpers)
     article.py       # one page's processing pipeline
-  api/               # pywikibot wrapper: transport, session, CheckPage, siteinfo, Wikidata, cache
-  lists/             # page list model, AWB list providers, pywikibot pagegenerators
+    process.py       # MainForm.ProcessPage, skip checks, default edit summary (options as data)
+  api/               # pywikibot wrapper: transport, session, CheckPage, siteinfo, Wikidata, SPARQL, cache
+  lists/             # page list model, AWB list providers, manual list, Wikidata query (SPARQL),
+                     #   pywikibot pagegenerators; sources.py = the list maker's source registry
+  editloop.py        # load/check/process/save one page against a WikiSession (no Qt; ui/ runs it in workers)
   rules/             # find & replace, typo lists, skip conditions
   editor/            # editor logic without Qt: tokenizer.py (port of codemirror-mediawiki token.ts),
                      #   mwconfig.py (per-wiki config from siteinfo), highlight_style.py (theme as data),
                      #   textselection.py (encapsulate), toolbar.py (WikiEditor toolbar), messages.py (i18n),
-                     #   dialogs.py (WikiEditor's link/file/table/search-and-replace dialogs)
+                     #   dialogs.py (WikiEditor's link/file/table/search-and-replace dialogs),
+                     #   diffhtml.py (action=compare rows as Qt rich text, mirrored for RTL)
   icons/             # Codex icon set (codex-icons.json) and variant lookup
   scripting/         # custom Python modules, sandbox-ish runner with timeout
   settings/          # config.toml profiles; later AWB settings import
@@ -219,7 +223,12 @@ Run tests and pyright before calling any task done.
    `WikiSession.prefix_search`, ordered as `mw.widgets.TitleWidget`, fetched off the UI thread), insert file
    (reads and writes the wiki's localised image magic words), insert table, search and replace (.NET regex
    syntax via `core.rx`, with timeout); logic in `editor/dialogs.py`, Qt in `ui/editor_dialogs.py`.
-   Next: the main window loop (profile and login, list maker, diff, save loop).
+   Main window loop: login dialog (config.toml profiles, keychain), list maker dock (every AWB source,
+   plus a manual list and a Wikidata SPARQL query mapped to this wiki's pages through sitelinks), Edit/Diff
+   tabs (diff from `action=compare`), options and skip panel, Start/Save/Skip/Stop/Show changes/Preview
+   (preview opens in the browser); the work runs in `editloop.EditLoop` off the UI thread (`ui/tasks.py`).
+   Next: find & replace and typo-fixing UI (the typo list page per wiki), append/prepend, categories and
+   files options, bot mode with the save delay, logging tab, the native word-level diff (wikidiff2 port).
    UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
