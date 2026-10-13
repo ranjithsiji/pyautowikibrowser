@@ -20,7 +20,13 @@ import shutil
 import sys
 from pathlib import Path
 
-CORE_KEYS = ("sig-text", "word-separator", "brackets")
+CORE_KEYS = (
+    "sig-text",
+    "word-separator",
+    "brackets",
+    "mw-widgets-titleinput-description-new-page",
+    "mw-widgets-titleinput-description-redirect",
+)
 CORE_PREFIXES = ("special-characters-",)
 WIKIEDITOR_PREFIXES = ("wikieditor-toolbar",)
 

@@ -249,6 +249,23 @@ class WikiSession:
         pages = result.get("query", {}).get("pages", ())
         return bool(pages) and not pages[0].get("missing") and not pages[0].get("invalid")
 
+    def prefix_search(self, query: str, limit: int = 10) -> dict[str, Any]:
+        """Link target suggestions: mw.widgets.TitleWidget's query (generator=prefixsearch with
+        info, disambiguation pageprops, descriptions and redirects), as the `query` object for
+        editor.dialogs.title_options."""
+        if not query.strip():
+            return {}
+        params: dict[str, Param] = {
+            "action": "query",
+            "prop": "info|pageprops|description",
+            "generator": "prefixsearch",
+            "gpssearch": query,
+            "gpslimit": limit,
+            "ppprop": "disambiguation",
+            "redirects": True,
+        }
+        return dict(self.transport.request(params).get("query", {}))
+
     def save(
         self,
         text: str,

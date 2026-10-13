@@ -106,7 +106,8 @@ src/pyawb/
   rules/             # find & replace, typo lists, skip conditions
   editor/            # editor logic without Qt: tokenizer.py (port of codemirror-mediawiki token.ts),
                      #   mwconfig.py (per-wiki config from siteinfo), highlight_style.py (theme as data),
-                     #   textselection.py (encapsulate), toolbar.py (WikiEditor toolbar), messages.py (i18n)
+                     #   textselection.py (encapsulate), toolbar.py (WikiEditor toolbar), messages.py (i18n),
+                     #   dialogs.py (WikiEditor's link/file/table/search-and-replace dialogs)
   icons/             # Codex icon set (codex-icons.json) and variant lookup
   scripting/         # custom Python modules, sandbox-ish runner with timeout
   settings/          # config.toml profiles; later AWB settings import
@@ -214,8 +215,11 @@ Run tests and pyright before calling any task done.
    stay whole. `ui/highlighter.py` runs it per block with the state kept on each block. WikiEditor toolbar:
    main/secondary rows, Advanced (heading menu, lists, size, gallery, redirect), Special characters (with
    recently used), Help; `encapsulate` passes core's QUnit cases (`tests/editor/test_textselection.py`); Codex
-   icons and Codex design tokens. Next: WikiEditor's dialogs (insert link, insert file, insert table,
-   search and replace; their buttons are disabled until then), then the main window loop.
+   icons and Codex design tokens. WikiEditor's dialogs: insert link (target suggestions from
+   `WikiSession.prefix_search`, ordered as `mw.widgets.TitleWidget`, fetched off the UI thread), insert file
+   (reads and writes the wiki's localised image magic words), insert table, search and replace (.NET regex
+   syntax via `core.rx`, with timeout); logic in `editor/dialogs.py`, Qt in `ui/editor_dialogs.py`.
+   Next: the main window loop (profile and login, list maker, diff, save loop).
    UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.

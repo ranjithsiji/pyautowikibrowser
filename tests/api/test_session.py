@@ -284,3 +284,13 @@ def test_login_runs_checkpage() -> None:
     assert session.can_save
     session.logout()
     assert not session.can_save and not session.user.is_logged_in
+
+
+def test_prefix_search_asks_for_title_widget_data() -> None:
+    t = FakeTransport(lambda p: {"query": {"pages": [{"title": "Mercury", "index": 1}]}})
+    session = WikiSession(t, siteinfo.base_site_config("en", "wikipedia"))
+    assert session.prefix_search("Merc") == {"pages": [{"title": "Mercury", "index": 1}]}
+    p = t.last("query")
+    assert p["generator"] == "prefixsearch" and p["gpssearch"] == "Merc"
+    assert p["ppprop"] == "disambiguation" and "description" in p["prop"]
+    assert session.prefix_search("  ") == {}

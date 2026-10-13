@@ -1,6 +1,6 @@
 /* PyAutoWikiBrowser application stylesheet: Wikimedia Codex's components drawn with Codex's design
    tokens. Placeholders (dollar + Codex token name with "-" written "_") are filled by pyawb.ui.theme;
-   $icon_check is a file with Codex's check icon.
+   $icon_check, $icon_up and $icon_down are files with Codex's check and chevron icons.
    Component rules follow Codex's own styles (design-codex packages/codex/src/components, the .vue files
    and themes/mixins); QSS cannot draw box-shadow focus rings, so focus is the border colour only.
    Keep rules direction-neutral (symmetric padding/margins) so RTL layouts work unchanged.
@@ -21,7 +21,19 @@ QPlainTextEdit, QTextEdit, QLineEdit, QSpinBox, QComboBox, QListView, QTreeView,
     border: $border_width_base solid $border_color_interactive;
     border-radius: $border_radius_base;
 }
-QLineEdit, QSpinBox, QComboBox { padding: 4px 8px; min-height: 22px; }
+QLineEdit, QComboBox { padding: 4px 8px; min-height: 22px; }
+QSpinBox { padding: 4px; min-height: 22px; }
+QSpinBox::up-button, QSpinBox::down-button {
+    subcontrol-origin: border;
+    width: 18px;
+    border: none;
+    background: transparent;
+}
+QSpinBox::up-button { subcontrol-position: top right; }
+QSpinBox::down-button { subcontrol-position: bottom right; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: $background_color_interactive_subtle__hover; }
+QSpinBox::up-arrow { image: url($icon_up); width: 10px; height: 10px; }
+QSpinBox::down-arrow { image: url($icon_down); width: 10px; height: 10px; }
 QPlainTextEdit:hover, QTextEdit:hover, QLineEdit:hover, QSpinBox:hover, QComboBox:hover {
     border-color: $border_color_interactive__hover;
 }

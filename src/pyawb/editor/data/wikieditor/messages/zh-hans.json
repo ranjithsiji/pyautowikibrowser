@@ -1,5 +1,7 @@
 {
 "brackets": "[$1]",
+"mw-widgets-titleinput-description-new-page": "页面不存在",
+"mw-widgets-titleinput-description-redirect": "重定向至$1",
 "special-characters-group-arabic": "阿拉伯字母",
 "special-characters-group-arabicextended": "扩展阿拉伯字母",
 "special-characters-group-bangla": "孟加拉语字符集",

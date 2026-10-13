@@ -72,24 +72,41 @@ def to_utf16(text: str, index: int) -> int:
     return index + sum(1 for c in text[:index] if ord(c) > 0xFFFF)
 
 
-def apply_action(editor: QPlainTextEdit, action: ts.TextAction) -> None:
-    """Run an encapsulate/replace action on the editor's selection, as one undo step."""
-    if editor.isReadOnly():
-        return
+def selection(editor: QPlainTextEdit) -> tuple[str, int, int]:
+    """(text, start, end) of the editor's selection, as str indices."""
     cursor = editor.textCursor()
     text = editor.toPlainText()
-    start = to_index(text, cursor.selectionStart())
-    end = to_index(text, cursor.selectionEnd())
-    edit = ts.do_action(text, start, end, action)
+    return text, to_index(text, cursor.selectionStart()), to_index(text, cursor.selectionEnd())
+
+
+def select(editor: QPlainTextEdit, start: int, end: int, text: str | None = None) -> None:
+    """Select start..end (str indices of text, the editor's text by default)."""
+    text = editor.toPlainText() if text is None else text
+    cursor = editor.textCursor()
+    cursor.setPosition(to_utf16(text, start))
+    cursor.setPosition(to_utf16(text, end), QTextCursor.MoveMode.KeepAnchor)
+    editor.setTextCursor(cursor)
+
+
+def apply_edit(editor: QPlainTextEdit, text: str, edit: ts.Edit) -> str:
+    """Apply an Edit computed on text (the editor's text) as one undo step; returns the new text."""
     new_text = edit.apply(text)
+    cursor = editor.textCursor()
     cursor.beginEditBlock()
     cursor.setPosition(to_utf16(text, edit.start))
     cursor.setPosition(to_utf16(text, edit.end), QTextCursor.MoveMode.KeepAnchor)
     cursor.insertText(edit.insert)
     cursor.endEditBlock()
-    cursor.setPosition(to_utf16(new_text, edit.sel_start))
-    cursor.setPosition(to_utf16(new_text, edit.sel_end), QTextCursor.MoveMode.KeepAnchor)
-    editor.setTextCursor(cursor)
+    select(editor, edit.sel_start, edit.sel_end, new_text)
+    return new_text
+
+
+def apply_action(editor: QPlainTextEdit, action: ts.TextAction) -> None:
+    """Run an encapsulate/replace action on the editor's selection, as one undo step."""
+    if editor.isReadOnly():
+        return
+    text, start, end = selection(editor)
+    apply_edit(editor, text, ts.do_action(text, start, end, action))
     editor.setFocus()
 
 

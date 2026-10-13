@@ -1,5 +1,7 @@
 {
 "brackets": "[$1]",
+"mw-widgets-titleinput-description-new-page": "ページは存在しません",
+"mw-widgets-titleinput-description-redirect": "$1 へのリダイレクト",
 "special-characters-group-arabic": "アラビア文字",
 "special-characters-group-arabicextended": "アラビア文字拡張",
 "special-characters-group-bangla": "ベンガル文字",

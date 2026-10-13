@@ -1,5 +1,7 @@
 {
 "brackets": "[$1]",
+"mw-widgets-titleinput-description-new-page": "сторінка ще не існує",
+"mw-widgets-titleinput-description-redirect": "перенаправлення на $1",
 "special-characters-group-arabic": "Арабські",
 "special-characters-group-arabicextended": "Арабська розширена",
 "special-characters-group-bangla": "Бенгальські",

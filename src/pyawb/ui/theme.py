@@ -100,6 +100,9 @@ def stylesheet(mode: Mode) -> str:
     t = tokens(mode)
     # Codex's checkbox mark: the check icon in the inverted colour
     t["icon_check"] = _icon_url("check", t["color_inverted_fixed"])
+    # spin box arrows: Codex's chevrons
+    t["icon_up"] = _icon_url("collapse", t["color_base"])
+    t["icon_down"] = _icon_url("expand", t["color_base"])
     return Template(template).substitute(t)
 
 

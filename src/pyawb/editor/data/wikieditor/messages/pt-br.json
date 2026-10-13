@@ -1,5 +1,7 @@
 {
 "brackets": "[$1]",
+"mw-widgets-titleinput-description-new-page": "a página ainda não existe",
+"mw-widgets-titleinput-description-redirect": "redireciona para $1",
 "special-characters-group-arabic": "Árabe",
 "special-characters-group-arabicextended": "Árabe estendido",
 "special-characters-group-bangla": "Bengali",

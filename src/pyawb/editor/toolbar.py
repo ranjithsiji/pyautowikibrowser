@@ -141,41 +141,91 @@ class Toolbar:
         ]
 
 
+# English defaults of the magic words WikiEditor uses (Hooks::getMagicWords)
+MAGIC_WORDS: dict[str, tuple[str, ...]] = {
+    "redirect": ("#REDIRECT",),
+    "img_alt": ("alt=$1",),
+    "img_right": ("right",),
+    "img_left": ("left",),
+    "img_none": ("none",),
+    "img_center": ("center", "centre"),
+    "img_thumbnail": ("thumb", "thumbnail"),
+    "img_framed": ("frame", "framed", "enframed"),
+    "img_frameless": ("frameless",),
+}
+
+# MediaWiki's default $wgUrlProtocols
+URL_PROTOCOLS: tuple[str, ...] = (
+    "bitcoin:", "ftp://", "ftps://", "geo:", "git://", "gopher://", "http://", "https://",
+    "irc://", "ircs://", "magnet:", "mailto:", "matrix:", "mms://", "news:", "nntp://",
+    "redis://", "sftp://", "sip:", "sips:", "sms:", "ssh://", "svn://", "tel:", "telnet://",
+    "urn:", "worldwind://", "xmpp:", "//",
+)  # fmt: skip
+
+
 @dataclass(frozen=True, slots=True)
 class ToolbarSite:
-    """What the toolbar needs from the wiki (WikiEditor's data.json and wgFormattedNamespaces)."""
+    """What the toolbar and its dialogs need from the wiki.
+
+    WikiEditor's data.json (magic words, signature) plus wgFormattedNamespaces, wgUrlProtocols,
+    wgServer and wgArticlePath.
+    """
 
     content_language: str = "en"
     sitename: str = "Wikipedia"
     file_namespace: str = "File"
     user_namespace: str = "User"
     user_talk_namespace: str = "User talk"
-    redirect: str = "#REDIRECT"
-    img_thumbnail: str = "thumb"
+    # every name of the File namespace (local, canonical, aliases), for reading [[File:...]]
+    file_namespace_names: tuple[str, ...] = ("File", "Image")
+    # WikiEditor's magicWords: redirect, img_alt, img_right ... (first alias is the preferred one)
+    magic_words: Mapping[str, tuple[str, ...]] = field(default_factory=lambda: dict(MAGIC_WORDS))
+    url_protocols: tuple[str, ...] = URL_PROTOCOLS
+    server: str = "//en.wikipedia.org"
+    article_path: str = "/wiki/$1"
+    capitalize_first_letter: bool = True
     extra_signature_namespaces: frozenset[int] = field(default_factory=frozenset[int])
+
+    @property
+    def redirect(self) -> str:
+        return self.magic_word("redirect")
+
+    @property
+    def img_thumbnail(self) -> str:
+        return self.magic_word("img_thumbnail")
+
+    def magic_word(self, name: str) -> str:
+        aliases = self.magic_words.get(name) or MAGIC_WORDS[name]
+        return aliases[0]
 
     @classmethod
     def from_siteinfo(cls, query: Mapping[str, Any]) -> ToolbarSite:
-        """From a siteinfo query (general, namespaces, magicwords), as in api/siteinfo.py."""
+        """From a siteinfo query (general, namespaces, namespacealiases, magicwords, protocols)."""
         general = query.get("general", {})
         namespaces = query.get("namespaces", {})
-        words = {w["name"]: w.get("aliases", []) for w in query.get("magicwords", [])}
+        words = {w["name"]: tuple(w.get("aliases", [])) for w in query.get("magicwords", [])}
 
         def ns(n: int, default: str) -> str:
             return str(namespaces.get(str(n), {}).get("name") or default)
 
-        def word(name: str, default: str) -> str:
-            aliases = words.get(name) or [default]
-            return str(aliases[0])
-
+        file_ns = namespaces.get("6", {})
+        file_names = [file_ns.get("name"), file_ns.get("canonical")]
+        file_names += [
+            a.get("alias") for a in query.get("namespacealiases", []) if a.get("id") == 6
+        ]
+        protocols = tuple(str(p) for p in query.get("protocols", [])) or URL_PROTOCOLS
         return cls(
             content_language=str(general.get("lang", "en")),
             sitename=str(general.get("sitename", "")),
             file_namespace=ns(6, "File"),
             user_namespace=ns(2, "User"),
             user_talk_namespace=ns(3, "User talk"),
-            redirect=word("redirect", "#REDIRECT"),
-            img_thumbnail=word("img_thumbnail", "thumb"),
+            file_namespace_names=tuple(dict.fromkeys(str(n) for n in file_names if n)),
+            magic_words={k: words.get(k) or v for k, v in MAGIC_WORDS.items()},
+            url_protocols=protocols,
+            server=str(general.get("server", "")),
+            article_path=str(general.get("articlepath", "/wiki/$1")),
+            capitalize_first_letter=general.get("case", "first-letter") == "first-letter",
         )
 
     def wants_signature(self, namespace: int) -> bool:

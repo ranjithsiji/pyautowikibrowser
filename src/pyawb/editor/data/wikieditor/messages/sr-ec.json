@@ -1,5 +1,7 @@
 {
 "brackets": "[$1]",
+"mw-widgets-titleinput-description-new-page": "страница још не постоји",
+"mw-widgets-titleinput-description-redirect": "преусмерава на $1",
 "special-characters-group-arabic": "Арапски",
 "special-characters-group-arabicextended": "Проширени арапски",
 "special-characters-group-bangla": "Бенгалски",

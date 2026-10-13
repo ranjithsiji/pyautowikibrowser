@@ -15,13 +15,15 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from PySide6.QtCore import QLocale, Qt
+from PySide6.QtCore import QLocale, Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMainWindow, QPlainTextEdit, QVBoxLayout, QWidget
 
 from pyawb import __version__, paths
 from pyawb.editor.messages import Messages
 from pyawb.editor.mwconfig import MwConfig, default_config
 from pyawb.editor.toolbar import ToolbarSite, build_toolbar
+from pyawb.ui.editor_dialogs import DIALOGS, EditorDialogs, Suggest
 from pyawb.ui.editor_toolbar import WikiEditorToolbar
 from pyawb.ui.highlighter import WikitextHighlighter
 
@@ -74,22 +76,35 @@ class MainWindow(QMainWindow):
             self.editor,
             build_toolbar(self.messages, self.site, recent_characters=_load_recent()),
             self.messages,
+            dialogs=DIALOGS,
             parent=central,
         )
         self.toolbar.recent_changed.connect(_save_recent)
+        self.dialogs = EditorDialogs(self.editor, self.messages, self.site, open_url=self.open_url)
+        self.toolbar.dialog_requested.connect(self.dialogs.open)
         layout.addWidget(self.toolbar)
         layout.addWidget(self.editor, 1)
         self.setCentralWidget(central)
 
-    def set_site(self, site: ToolbarSite, rtl: bool = False) -> None:
-        """Rebuild the toolbar for a loaded wiki (namespaces, magic words, content language)."""
+    def set_site(
+        self, site: ToolbarSite, rtl: bool = False, suggest: Suggest | None = None
+    ) -> None:
+        """Rebuild the toolbar and dialogs for a loaded wiki (namespaces, magic words, content
+        language). suggest: link target suggestions, WikiSession.prefix_search."""
         self.site = site
+        self.messages = Messages(self.messages.lang, site.sitename)
         content = Messages(site.content_language, site.sitename)
         toolbar = build_toolbar(
             self.messages, site, content, recent_characters=self.toolbar.recent_characters
         )
-        self.toolbar.set_toolbar(toolbar)
+        self.toolbar.set_toolbar(toolbar, self.messages)
+        self.dialogs.set_site(self.messages, site, suggest)
         self.set_text_direction(rtl)
+
+    @staticmethod
+    def open_url(url: str) -> None:
+        """Open a page in the default browser (Firefox where installed is the user's choice)."""
+        QDesktopServices.openUrl(QUrl(url))
 
     def set_wiki_config(self, config: MwConfig) -> None:
         """Highlight with the loaded wiki's magic words, tags and namespaces."""

@@ -77,7 +77,7 @@ def test_special_character_inserts_and_is_remembered(qtbot: QtBot) -> None:
     assert blocker.args == [["Á"]]
 
 
-def test_dialog_tools_disabled_until_implemented(qtbot: QtBot) -> None:
+def test_dialog_tools_disabled_without_a_handler(qtbot: QtBot) -> None:
     _, bar = make(qtbot)
     assert not bar.button("link").isEnabled()
 
