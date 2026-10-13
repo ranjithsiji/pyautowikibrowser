@@ -46,9 +46,7 @@ def test_remembers_a_working_password() -> None:
 def test_forgets_when_not_remembering() -> None:
     kr = MemoryKeyring()
     kr.store[KEY] = "secret"
-    profile = Profile(
-        "ml", lang="ml", username="Example@PyAWB", remember_password=False
-    )
+    profile = Profile("ml", lang="ml", username="Example@PyAWB", remember_password=False)
     connect.log_in(session(), profile, keyring=kr)
     assert kr.store == {}
 

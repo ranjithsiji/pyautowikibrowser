@@ -16,6 +16,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMainWindow, QPlainTextEdit
 
 from pyawb import __version__
+from pyawb.editor.mwconfig import MwConfig, default_config
+from pyawb.ui.highlighter import WikitextHighlighter
 
 
 class MainWindow(QMainWindow):
@@ -25,7 +27,12 @@ class MainWindow(QMainWindow):
         self.resize(1000, 700)
         self.editor = QPlainTextEdit(self)
         self.editor.setObjectName("editor")
+        self.highlighter = WikitextHighlighter(self.editor.document(), default_config())
         self.setCentralWidget(self.editor)
+
+    def set_wiki_config(self, config: MwConfig) -> None:
+        """Highlight with the loaded wiki's magic words, tags and namespaces."""
+        self.highlighter.set_config(config)
 
     def set_text_direction(self, rtl: bool) -> None:
         """Set editor direction from the wiki's siteinfo `rtl` flag."""

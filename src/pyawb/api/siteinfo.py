@@ -38,7 +38,8 @@ from pyawb.core.site import (
 SITEINFO_PARAMS: Mapping[str, Param] = {
     "action": "query",
     "meta": "siteinfo",
-    "siprop": "general|namespaces|namespacealiases|magicwords",
+    "siprop": "general|namespaces|namespacealiases|magicwords|extensiontags|functionhooks|variables"
+    "|protocols",
 }
 
 MONTH_MESSAGES: tuple[str, ...] = tuple(m.lower() + "-gen" for m in EN_MONTH_NAMES)
@@ -74,6 +75,8 @@ class SiteInfo:
         default_factory=dict[int, tuple[str, ...]]
     )
     magic_words: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    # the whole "query" object, for the editor's highlighter (editor.mwconfig.from_siteinfo)
+    query: Mapping[str, Any] = field(default_factory=dict[str, Any])
 
     @property
     def article_url(self) -> str:
@@ -137,6 +140,7 @@ def parse_siteinfo(result: Mapping[str, Any]) -> SiteInfo:
         canonical_namespaces=canonical,
         namespace_aliases={n: tuple(v) for n, v in aliases.items()},
         magic_words=magic,
+        query=query,
     )
 
 

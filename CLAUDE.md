@@ -99,13 +99,15 @@ src/pyawb/
   api/               # pywikibot wrapper: transport, session, CheckPage, siteinfo, Wikidata, cache
   lists/             # page list model, AWB list providers, pywikibot pagegenerators
   rules/             # find & replace, typo lists, skip conditions
+  editor/            # editor logic without Qt: tokenizer.py (port of codemirror-mediawiki token.ts),
+                     #   mwconfig.py (per-wiki config from siteinfo), highlight_style.py (theme as data)
   scripting/         # custom Python modules, sandbox-ish runner with timeout
   settings/          # config.toml profiles; later AWB settings import
   paths.py           # per-OS config and data directories (PYAWB_HOME overrides)
   plugins/           # plugin API and loader
   ui/                # PySide6 windows, views, models (no business logic)
 tests/
-  core/  api/  ui/  parity/  settings/
+  core/  api/  ui/  parity/  settings/  editor/
 docs/wiki/           # pages to publish on Wikipedia (the User-Agent contact page)
 ```
 
@@ -199,7 +201,12 @@ Run tests and pyright before calling any task done.
    (`WikiSession(require_enabled_version=...)`, off for now) and may use the "AWB" change tag; OAuth; the edit
    scheduler (delay between saves) belongs with the save loop in step 5; Wikidata dates/description not yet
    used by the category and DEFAULTSORT fixes.
-5. UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
+5. In progress. Done: wikitext highlighting. `editor/tokenizer.py` is a line-for-line port of codemirror-mediawiki's
+   `token.ts` (+ TeX/JSON sub-modes; LilyPond not ported) passing all 2717 upstream tokenizer tests
+   (`tests/editor/test_tokenizer_parity.py`); deliberate difference: `\p{M}` added to word classes so Indic words
+   stay whole. `ui/highlighter.py` runs it per block with the state kept on each block. Next: WikiEditor toolbar
+   and `encapsulate`, then the main window loop.
+   UI MVP (Qt widgets, Qt-native editor implementing WikiEditor: toolbar sections/groups/tools, heading menu,
    special characters, link/table/search-replace dialogs, help panel, `encapsulate` behaviour, all from WikiEditor's
    config and i18n): list maker, editor, server diff/preview, skip/save loop, find & replace, typo fixing, general fixes.
 6. Settings import, custom Python modules, plugins.

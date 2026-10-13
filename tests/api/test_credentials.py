@@ -23,20 +23,10 @@ class MemoryKeyring:
 
 def test_save_load_forget() -> None:
     kr = MemoryKeyring()
-    credentials.save_password(
-        "https://ml.wikipedia.org/w/", "Alice@PyAWB", "s3cret", kr
-    )
+    credentials.save_password("https://ml.wikipedia.org/w/", "Alice@PyAWB", "s3cret", kr)
     assert kr.store == {("pyawb", "Alice@PyAWB@https://ml.wikipedia.org/w"): "s3cret"}
-    assert (
-        credentials.load_password("https://ml.wikipedia.org/w", "Alice@PyAWB", kr)
-        == "s3cret"
-    )
-    assert (
-        credentials.load_password("https://en.wikipedia.org/w/", "Alice@PyAWB", kr)
-        is None
-    )
+    assert credentials.load_password("https://ml.wikipedia.org/w", "Alice@PyAWB", kr) == "s3cret"
+    assert credentials.load_password("https://en.wikipedia.org/w/", "Alice@PyAWB", kr) is None
     credentials.forget_password("https://ml.wikipedia.org/w/", "Alice@PyAWB", kr)
-    credentials.forget_password(
-        "https://ml.wikipedia.org/w/", "Alice@PyAWB", kr
-    )  # no error
+    credentials.forget_password("https://ml.wikipedia.org/w/", "Alice@PyAWB", kr)  # no error
     assert kr.store == {}
