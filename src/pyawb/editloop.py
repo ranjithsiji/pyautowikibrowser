@@ -77,6 +77,7 @@ class LoopOptions:
     # Skip tab: "No alerts", "Only cosmetic changes" (two parses on the wiki)
     skip_if_no_alerts: bool = False
     skip_cosmetic: bool = False
+    alerts: tuple[int, ...] = ()  # Preferences ▸ Alerts (() = all)
 
 
 @dataclass
@@ -206,7 +207,7 @@ class EditLoop:
         if (
             opts.skip_if_no_alerts
             and article is not None
-            and not process.page_info(article.article_text, article).alerts
+            and not process.page_info(article.article_text, article, opts.alerts).alerts
         ):
             return self._skip(result, "Page has no alerts")
         return None

@@ -15,9 +15,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, QRunnable, QThread, QThreadPool, Signal
 
 _running: set[_Signals] = set()  # keep the signal objects alive until delivered
+_low_priority = False
+
+
+def set_low_priority(on: bool) -> None:
+    """Preferences ▸ Low priority: background work runs in low-priority threads (AWB lowered its
+    main thread's priority)."""
+    global _low_priority
+    _low_priority = on
 
 
 class _Signals(QObject):
@@ -31,6 +39,11 @@ class _Task(QRunnable):
         self.fn, self.signals = fn, signals
 
     def run(self) -> None:
+        thread = QThread.currentThread()
+        if thread is not None:
+            thread.setPriority(
+                QThread.Priority.LowPriority if _low_priority else QThread.Priority.NormalPriority
+            )
         try:
             result = self.fn()
         except Exception as e:  # reported to the UI, never lost in the worker

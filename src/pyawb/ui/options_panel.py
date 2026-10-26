@@ -42,6 +42,7 @@ from pyawb.core.process import (
     ProcessOptions,
     clean_category_input,
     clean_file_input,
+    skip_options,
 )
 from pyawb.core.site import SiteConfig, current_site, use_site
 from pyawb.editloop import LoopOptions
@@ -50,6 +51,7 @@ from pyawb.rules.replacespecial import IRule, ReplaceSpecial
 from pyawb.rules.skip import create_comparer
 from pyawb.rules.substtemplates import SubstTemplates
 from pyawb.ui.find_replace_dialog import FindReplaceDialog, FindReplaceSettings
+from pyawb.ui.option_dialogs import SkipIfNoDialog
 from pyawb.ui.replace_special_dialog import ReplaceSpecialDialog
 from pyawb.ui.subst_templates_dialog import SubstSettings, SubstTemplatesDialog
 
@@ -149,6 +151,12 @@ class OptionsPanel(QTabWidget):
             self.ignore_nobots,
         ):
             general.addWidget(w)
+        # AWB's "Auto changes skip options": skip if general fixes made none of the chosen changes
+        self.skip_if_no: frozenset[int] = frozenset()
+        self.skip_if_no_button = QPushButton(self.tr("Auto changes skip options…"), options)
+        self.skip_if_no_button.clicked.connect(self.edit_skip_if_no)
+        self.general_fixes.toggled.connect(self.skip_if_no_button.setEnabled)
+        general.addWidget(self.skip_if_no_button)
 
         far = QGroupBox(self.tr("Find and replace"), options)
         self.find_replace = QCheckBox(self.tr("Find and replace"), far)
@@ -342,6 +350,16 @@ class OptionsPanel(QTabWidget):
         if dialog.exec():
             self.set_find_replace(dialog.settings())
 
+    def edit_skip_if_no(self) -> None:
+        dialog = SkipIfNoDialog(self.skip_if_no, self)
+        dialog.exec()
+        self.skip_if_no = dialog.value()
+        self.skip_if_no_button.setText(
+            self.tr("Auto changes skip options (%n on)…", "", len(self.skip_if_no))
+            if self.skip_if_no
+            else self.tr("Auto changes skip options…")
+        )
+
     def edit_replace_special(self) -> None:
         """Advanced settings: Replace Special's rule tree."""
         dialog = ReplaceSpecialDialog(self.replace_special_rules, self)
@@ -443,6 +461,7 @@ class OptionsPanel(QTabWidget):
             no_parse=no_parse,
             no_retf=no_retf,
             unicodify_whole=self.unicodify.isChecked(),
+            skip=skip_options(self.skip_if_no),
             find_and_replace=far,
             replace_special=replace_special,
             subst_templates=subst,

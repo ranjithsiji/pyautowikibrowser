@@ -41,6 +41,8 @@ from typing import Any
 
 from pyawb.paths import config_dir
 from pyawb.settings.preferences import (
+    ALERTS,
+    AUTOSAVE_SECONDS,
     ON_LOAD,
     PASTE_MORE_SLOTS,
     THEMES,
@@ -161,20 +163,48 @@ def parse(text: str) -> AppConfig:
     )
 
 
+_CHOICES: Mapping[str, tuple[str, ...]] = {"theme": THEMES, "on_load": ON_LOAD}
+_INT_RANGES: Mapping[str, tuple[int, int]] = {"autosave_seconds": AUTOSAVE_SECONDS}
+_ALERT_IDS = frozenset(i for i, _ in ALERTS)
+
+
+def _preference(name: str, value: Any, default: Any) -> Any:
+    """One [preferences] value, checked against its default's type (and range or choices); a
+    bad value gives the default."""
+    if name in _CHOICES:
+        return value if value in _CHOICES[name] else default
+    if isinstance(default, bool):
+        return value if isinstance(value, bool) else default
+    if isinstance(default, int):
+        low, high = _INT_RANGES.get(name, (0, 1_000_000))
+        return (
+            value
+            if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+            else default
+        )
+    if isinstance(default, str):
+        return value if isinstance(value, str) else default
+    if isinstance(default, tuple) and isinstance(value, list):
+        items: list[Any] = value  # pyright: ignore[reportUnknownVariableType]
+        if name == "alerts":
+            return tuple(sorted({i for i in items if isinstance(i, int) and i in _ALERT_IDS}))
+        texts = [str(x) for x in items]
+        if name == "paste_more":
+            texts = (texts + [""] * PASTE_MORE_SLOTS)[:PASTE_MORE_SLOTS]
+        return tuple(texts)
+    return default
+
+
 def _preferences(raw: Any, raw_fonts: Any) -> Preferences:
     """[preferences] and [fonts.<script>]; unknown keys and bad values fall back to defaults (a
     preference is never a reason to refuse the whole file)."""
     p: Mapping[str, Any] = raw if isinstance(raw, Mapping) else {}  # pyright: ignore[reportUnknownVariableType]
     d = Preferences()
-
-    def choice(key: str, allowed: tuple[str, ...], default: str) -> str:
-        value = p.get(key, default)
-        return value if value in allowed else default
-
-    def flag(key: str, default: bool) -> bool:
-        value = p.get(key, default)
-        return value if isinstance(value, bool) else default
-
+    values = {
+        f.name: _preference(f.name, p[f.name], getattr(d, f.name))
+        for f in fields(Preferences)
+        if f.name != "fonts" and f.name in p
+    }
     fonts: dict[str, FontChoice] = {}
     if isinstance(raw_fonts, Mapping):
         for script, f in raw_fonts.items():  # pyright: ignore[reportUnknownVariableType]
@@ -187,28 +217,12 @@ def _preferences(raw: Any, raw_fonts: Any) -> Preferences:
                     interface=str(fm.get("interface", "")),
                     diff=str(fm.get("diff", "")),
                 )
-    language = p.get("language", "")
-    raw_paste = p.get("paste_more", [])
-    paste: list[str] = (
-        [str(x) for x in raw_paste][:PASTE_MORE_SLOTS]  # pyright: ignore[reportUnknownVariableType]
-        if isinstance(raw_paste, list)
-        else []
-    )
-    paste += [""] * (PASTE_MORE_SLOTS - len(paste))
-    return Preferences(
-        theme=choice("theme", THEMES, d.theme),
-        language=language if isinstance(language, str) else "",
-        on_load=choice("on_load", ON_LOAD, d.on_load),
-        warn_on_exit=flag("warn_on_exit", d.warn_on_exit),
-        word_wrap=flag("word_wrap", d.word_wrap),
-        paste_more=tuple(paste),
-        fonts=fonts,
-    )
+    return replace(d, **values, fonts=fonts)
 
 
-def _toml_value(value: str | bool | int | tuple[str, ...]) -> str:
+def _toml_value(value: str | bool | int | tuple[str | int, ...]) -> str:
     if isinstance(value, tuple):
-        # a JSON array of strings is a valid TOML inline array
+        # a JSON array of strings or numbers is a valid TOML inline array
         return json.dumps(list(value), ensure_ascii=False)
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -226,8 +240,9 @@ def dumps(config: AppConfig) -> str:
     ]
     prefs = config.preferences
     lines += ["", "[preferences]"]
-    for key in ("theme", "language", "on_load", "warn_on_exit", "word_wrap", "paste_more"):
-        lines.append(f"{key} = {_toml_value(getattr(prefs, key))}")
+    for f in fields(Preferences):
+        if f.name != "fonts":
+            lines.append(f"{f.name} = {_toml_value(getattr(prefs, f.name))}")
     for script, f in sorted(prefs.fonts.items()):
         lines += ["", f"[fonts.{json.dumps(script, ensure_ascii=False)}]"]
         lines += [

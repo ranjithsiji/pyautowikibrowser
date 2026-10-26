@@ -265,7 +265,15 @@ class WikiSession:
         params: dict[str, Param] = {**OPEN_PARAMS, "titles": title}
         if resolve_redirects:
             params["redirects"] = True
-        self.page = PageInfo.from_json(self.transport.request(params))
+        if self.user.is_logged_in:
+            # ActionOptions.CheckNewMessages: the talk page flag and the notification count
+            # come with every page, so the loop can stop for new messages
+            params["meta"] = f"{params['meta']}|userinfo|notifications"
+            params["uiprop"] = "hasmsg"
+            params["notprop"] = "count"
+        result = self.transport.request(params)
+        self.page = PageInfo.from_json(result)
+        self.user = self.user.updated(result)
         return self.page
 
     def page_exists(self, title: str) -> bool:

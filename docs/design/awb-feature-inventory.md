@@ -65,7 +65,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Item | Status | Phase / notes |
 |---|---|---|
 | Preferences… (Ctrl+P) | partial | see Preferences below |
-| Summaries… / Default Edit Summaries… | missing | B |
+| Summaries… / Default Edit Summaries… | done | AWB's English list on English-language wikis until edited |
 | Auto save settings file every 10 edits | missing | D |
 | Use pre-parse mode (Ctrl+Shift+E) | done | pages with changes stay, marked green; works in Read only mode too (processed as a dry run) |
 | Follow redirects | done | the menu item and the Options tab box are one setting |
@@ -86,25 +86,25 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 ### Preferences (dialog)
 | Item | Status | Phase / notes |
 |---|---|---|
-| General: minimize to tray | missing | B3 (QSystemTrayIcon) |
+| General: minimize to tray | done | where the desktop has a notification area |
 | General: warn on exit | done | |
 | General: save page list with settings | missing | D |
-| General: low thread priority | missing | A |
-| General: on load (show changes / preview) | done (diff / edit box) | A: preview |
+| General: low thread priority | done | the worker threads run at low priority |
+| General: on load (show changes / preview / edit box) | done | preview opens in the browser |
 | General: preview the diff in bot mode | missing | C (bots) |
 | General: enable logging | missing (always on) | A |
 | Site: project, language | done (profiles) | |
-| Site: suppress "using AWB" | missing | A |
+| Site: suppress "using AWB" | n/a | AWB enables it only on non-Wikimedia wikis, where no tag is added; bots: C4 |
 | Site: ignore {{bots}}/{{nobots}} | done (Options tab) | |
-| Site: empty page list on project change | missing | A |
-| Editing and saving: auto save edit box every x s to a file | missing | A |
-| Editing and saving: moving average timer | missing | A |
+| Site: empty page list on project change | done | |
+| Editing and saving: auto save edit box every x s to a file | done | |
+| Editing and saving: moving average timer | done | "Timer: n" in the status bar |
 | Editing and saving: "using AWB" on delete/protect | missing | C |
-| Editing and saving: flash / beep when ready to save | missing | A |
+| Editing and saving: flash / beep when ready to save | done | only when the window is in the background, as AWB |
 | Editing and saving: edit box font | done (fonts per script) | |
 | Tools: add list to comparer / splitter, DB scanner results to list (ask/always/never) | missing | E |
 | Privacy: include user name in statistics | n/a | PyAWB sends no usage statistics |
-| Alerts: which alerts to show | missing | B |
+| Alerts: which alerts to show | done | also limits Highlight errors and Skip ▸ No alerts |
 | (PyAWB) theme, interface language, fonts per script | done | |
 
 ### Tools
@@ -157,7 +157,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Tab / item | Status | Phase / notes |
 |---|---|---|
 | Options: auto tag, general fixes, unicodify | done | |
-| Options: Auto changes skip options ("Skip if no…" dialog) | missing (engine `SkipOptions` exists) | B |
+| Options: Auto changes skip options ("Skip if no…" dialog) | done | |
 | Options: find and replace normal settings | done | with the Search box |
 | Options: advanced settings (Replace Special: rule tree, in-template rules, If tab, apply n times, Test) | done | `ui.replace_special_dialog` |
 | Options: template substitution | done | `ui.subst_templates_dialog`; expansion through `api.tagger.WikiTemplateExpander` |
@@ -218,7 +218,7 @@ These items were missing from the tables above.
 | Diff | Single click on a line focuses the edit box there; **double click undoes all changes on that line** | done | `editcommands.undo_line_changes` |
 | Diff | Persian AWB mirrors the whole window and the diff in RTL | done | `diffhtml` mirrors, Qt layout direction |
 | Toolbar | Show/hide control panel and show/hide parameters buttons; Delete (admins); False positive | partial (View menu items) | C (delete) |
-| Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | partial (no timer, no notifications) | B3 (with the moving-average timer preference), C4 (bot timer) |
+| Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | done but the bot timer | C4 (bot timer); messages and notifications are read with every page opened, as AWB |
 | View | Show toolbar, Show control panel, Enlarge edit box, Show edit box toolbar, Display false positives button | missing | A |
 | List context | Format page titles per displaytitle | done | italics, bold, sub, sup (AWB: italics only); looked up with `api.pageinfo` |
 | List context | Select ▸ All (Ctrl+A) / None / Inverse (Ctrl+Shift+I); Remove ▸ Selected / All / Duplicates / Non-main space | done | |
@@ -230,13 +230,13 @@ These items were missing from the tables above.
 | Edit box | Custom toolbar buttons added by plugins and modules (Persian screenshot) | missing | E |
 | Options menu | Use pre-parse mode Ctrl+Shift+E | done | |
 | Tools | C# Eval (run a snippet against the page) → Python console | missing | E |
-| Tray | Minimize to tray menu: Show / Hide / Exit | missing | B3 (with its preference) |
+| Tray | Minimize to tray menu: Show / Hide / Exit | done | |
 | Profiles dialog | Table ID / user / password saved? / default settings file / notes; Login, Add, Edit, Delete; quick login with "save this account / password" | done differently | start screen + Settings → User profiles; per-profile default project: D |
 | Disambig tab | Enable, link to disambiguate + Load links (variants from the disambiguation page), variants box, skip when none made, ± context characters | missing | C |
 | Bots tab | Auto save, max edits, delay between edits, suppress "using AWB"; nudge timer (resave if stuck, total nudges, reset, skip if first nudge fails); auto shutdown (shutdown/standby/restart/hibernate) | missing | C |
 | Find & Replace dialog | row indicator column, Search + Go; links to the regex help | done (Search) | |
 | Replace Special | New / Rule menus, up/down arrows to reorder, New rule / New subrule / Delete, Find/If tabs | done | undo/redo, cut/copy/paste, disabled rules in red |
-| Skip if no… | Check all/none + 10 boxes (title boldened, external link bulleted, bad links fixed, unicodification, auto tag changes, header error fixed, DEFAULTSORT added, user talk templates subst'd, citation dates fixed, human category changes) | missing UI | B |
+| Skip if no… | Check all/none + 10 boxes (title boldened, external link bulleted, bad links fixed, unicodification, auto tag changes, header error fixed, DEFAULTSORT added, user talk templates subst'd, citation dates fixed, human category changes) | done | |
 | List filter | Namespaces (content + talk columns, all content / all talk), title remove/keep containing (+regex), sort, remove duplicates, set operations (difference, intersection) with another list (open file, paste, clear) | done | |
 | Regex tester | Find, Replace, text, result; MultiLine/SingleLine/IgnoreCase/ExplicitCapture | done | |
 | External processing | Enabled, skip if no change, program, arguments, I/O file, pass text as file or as parameter | missing | E |
@@ -289,7 +289,7 @@ running app with screenshots. One commit per step.
 | A4 ✔ | **Skip tab** extras (spam filter blocked, only cosmetic changes, no alerts, exists/doesn't/don't care radio); **Logs** context menu (add to list, cut/copy, remove, select, open page/diff/history, filter show only/exclude, clear, reset) | `LogControl.cs`, `Main.cs` skip checks | User manual: Skip tab, Logs |
 | B1 ✔ | **List filter** dialog (namespaces, title, set operations, sort, duplicates) | `ListFilterForm.cs` | Database Scanner: results Filter uses the same dialog |
 | B2 ✔ | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |
-| B3 | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
+| B3 ✔ | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
 | C1 | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
 | C2 | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
 | C3 | Admin actions **Watch/Unwatch, Move, Protect, Delete** (+ "using AWB" summaries) and bypass all redirects | `ArticleActionDialog.cs`, `Article.cs` | User manual: Start tab admin buttons |

@@ -213,6 +213,8 @@ QStatusBar {
 /* AWB's user box: red "User:" when logged out, the name on green when logged in */
 QLabel#userLabel { padding: 1px 8px; color: $color_inverted_fixed; background: $background_color_destructive; }
 QLabel#userLabel[loggedIn="true"] { background: $color_success; }
+QLabel#notifications { padding: 1px 6px; color: $color_inverted_fixed; background: $background_color_disabled; }
+QLabel#notifications[unread="true"] { background: $background_color_destructive; font-weight: bold; }
 QLabel#positionLabel { padding: 0 8px; font-weight: bold; }
 /* notices (Codex Message): information, and a warning with what to do */
 QLabel#infoNotice {

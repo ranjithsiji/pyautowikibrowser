@@ -367,3 +367,21 @@ def test_pywikibot_prompt_is_answered_and_restored(monkeypatch: pytest.MonkeyPat
     with pytest.raises(LoginException):  # no answer: the login is cancelled
         PywikibotTransport(FakeSite()).login("Alice", "pw", lambda label: None)  # type: ignore[arg-type]
     assert pywikibot.input is prompt
+
+
+def test_open_checks_messages_and_notifications() -> None:
+    """ApiEdit's CheckNewMessages: each page opened also reports new messages and the unread
+    notification count."""
+    from tests.api.test_editloop import open_response
+
+    session, t = approved_session()
+    response = dict(open_response("قط", "نص"))
+    query = dict(response["query"])
+    query["userinfo"] = {"id": 1, "name": "Alice", "messages": True}
+    query["notifications"] = {"count": "3", "rawcount": 3}
+    response["query"] = query
+    t.responses[("titles", "قط")] = response
+    session.open("قط")
+    sent = [p for p, _, _ in t.requests if p.get("titles") == "قط"][-1]
+    assert "userinfo" in sent["meta"] and sent["uiprop"] == "hasmsg"
+    assert session.user.has_messages and session.user.notifications == 3

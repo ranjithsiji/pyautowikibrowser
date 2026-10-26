@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 import regex
-from PySide6.QtCore import QLocale, Qt, QUrl
+from PySide6.QtCore import QEvent, QLocale, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -102,12 +102,14 @@ from pyawb.ui.info_bar import Info, InfoBar
 from pyawb.ui.list_maker import ListMaker
 from pyawb.ui.login_dialog import LoginDialog
 from pyawb.ui.logs_tab import LogsTab
+from pyawb.ui.option_dialogs import SummaryEditorDialog
 from pyawb.ui.options_panel import OptionsError, OptionsPanel
 from pyawb.ui.regex_tester import RegexTesterDialog
 from pyawb.ui.settings_dialog import SettingsDialog
 from pyawb.ui.start_screen import StartResult
 from pyawb.ui.start_tab import StartTab
-from pyawb.ui.tasks import run_task
+from pyawb.ui.tasks import run_task, set_low_priority
+from pyawb.ui.window_extras import EditBoxAutosave, NotificationsLabel, SaveTimer, TrayIcon
 
 RECENT_FILE = "recent_characters.json"
 
@@ -304,6 +306,8 @@ class MainWindow(QMainWindow):
         self._make_statusbar()
         self._make_menus()
         self.edit_box_menu = EditBoxMenu(self)
+        self.autosave = EditBoxAutosave(self.editor.toPlainText, self)
+        self.tray: TrayIcon | None = None
         self.apply_preferences(self.config.preferences)
         self._update_modes()
         self._update_counts()
@@ -394,9 +398,14 @@ class MainWindow(QMainWindow):
         self.user_label = QLabel(self)
         self.user_label.setObjectName("userLabel")
         self.statusBar().addWidget(self.status_label, 1)
+        self.save_timer = SaveTimer(self)
+        self.notifications_label = NotificationsLabel(self)
+        self.notifications_label.hide()
+        self.statusBar().addPermanentWidget(self.save_timer)
         self.statusBar().addPermanentWidget(self.counts_label)
         self.statusBar().addPermanentWidget(self.wiki_label)
         self.statusBar().addPermanentWidget(self.user_label)
+        self.statusBar().addPermanentWidget(self.notifications_label)
         self._update_user()
 
     def _make_menus(self) -> None:
@@ -471,6 +480,7 @@ class MainWindow(QMainWindow):
         options_menu.addAction(
             action(self.tr("Preferences…"), lambda: self.open_settings("general"), "Ctrl+P")
         )
+        options_menu.addAction(action(self.tr("Default edit summaries…"), self.edit_summaries))
         self.pre_parse_action = action(
             self.tr("Use pre-parse mode"), self._pre_parse_toggled, "Ctrl+Shift+E", checked=False
         )
@@ -748,6 +758,13 @@ class MainWindow(QMainWindow):
 
     def use_session(self, session: WikiSession, wiki: WikiContext | None = None) -> None:
         """Work on this (connected) wiki."""
+        previous = self.session.site.url if self.session else None
+        if (
+            previous is not None
+            and previous != session.site.url
+            and self.config.preferences.clear_list_on_wiki_change
+        ):
+            self.list_maker.clear_list()  # Preferences ▸ empty the page list on project change
         self.session = session
         self.loop = EditLoop(session)
         self._set_busy(False)
@@ -761,6 +778,7 @@ class MainWindow(QMainWindow):
         self.list_maker.set_wiki(wiki, site)
         self.options.set_site(site)
         self.logs.set_site(site)
+        self._fill_summaries()
         self.typos = None
         self.wiki_label.setText(site.url.replace("https://", "").replace(".org", ""))
         self._update_user()
@@ -1149,7 +1167,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"PyAutoWikiBrowser – {title}")
         if result.article is not None:
             with use_site(self.session.site if self.session else current_site()):
-                self.start_tab.set_page_info(process.page_info(result.text, result.article))
+                self.start_tab.set_page_info(self._page_info(result.text, result.article))
+        if self.session is not None and self.session.user.is_logged_in:
+            self.notifications_label.show_count(self.session.user.notifications)
+            self.notifications_label.show()
         if result.in_use:
             self.set_status(self.tr("This page has {{inuse}}: consider skipping it"))
         self.edit_tabs.setCurrentIndex(0)
@@ -1160,9 +1181,13 @@ class MainWindow(QMainWindow):
         if self.mode is Mode.READ_ONLY:
             self.set_status(self.tr("Read only: %1").replace("%1", title))
             return
+        self._ready_alert()
         if self.config.preferences.on_load == "edit":
             self._set_busy(False, self.tr("Ready: Diff shows the changes"))
             self.editor.setFocus()
+            return
+        if self.config.preferences.on_load == "preview":
+            self.preview()
             return
         self.diff.show()
         self.show_diff()
@@ -1262,7 +1287,7 @@ class MainWindow(QMainWindow):
             self.review_summary.setEditText(result.summary)
             if result.article is not None:
                 with use_site(self.wiki_site()):
-                    self.start_tab.set_page_info(process.page_info(str(new), result.article))
+                    self.start_tab.set_page_info(self._page_info(str(new), result.article))
             self._report_timeouts()
             self.highlight()
             self._place_cursor()
@@ -1345,6 +1370,7 @@ class MainWindow(QMainWindow):
         opts.apply_changes = self.apply_changes_action.isChecked()
         opts.sort_interwikis = self.sort_interwikis_action.isChecked()
         opts.pre_parse = self.pre_parse_action.isChecked()
+        opts.alerts = self.config.preferences.alerts
         if opts.pre_parse and opts.mode is Mode.READ_ONLY:
             opts.mode = Mode.DRY_RUN  # pre-parsing processes pages; nothing is saved
         p = opts.process
@@ -1421,7 +1447,9 @@ class MainWindow(QMainWindow):
                 mark(found, t["background_color_warning_subtle"], t["color_base"])
             if self.highlight_errors_action.isChecked():
                 with use_site(self.wiki_site()):
-                    self.errors = process.page_errors(text, self.current.article)
+                    self.errors = process.page_errors(
+                        text, self.current.article, self.config.preferences.alerts
+                    )
                 mark(self.errors, t["background_color_error_subtle"], t["color_error"])
         self.editor.setExtraSelections(selections)
 
@@ -1475,6 +1503,44 @@ class MainWindow(QMainWindow):
             return
         self.set_status(self.tr("Recorded as a false positive: %1").replace("%1", title))
 
+    def _page_info(self, text: str, article: Article) -> process.PageInfo:
+        """The Start tab's statistics and the alerts chosen in Preferences ▸ Alerts ('sic' is
+        always shown while fixing typos, as AWB)."""
+        return process.page_info(
+            text,
+            article,
+            self.config.preferences.alerts,
+            typo_fixing=self.options.fix_typos.isChecked(),
+        )
+
+    def _ready_alert(self) -> None:
+        """Preferences ▸ when ready to save: flash and/or beep if the window is in the
+        background (AWB's Bleepflash)."""
+        prefs = self.config.preferences
+        if self.isActiveWindow() or self.mode is not Mode.EDIT:
+            return
+        if prefs.flash:
+            QApplication.alert(self)
+        if prefs.beep:
+            QApplication.beep()
+
+    def edit_summaries(self) -> None:
+        """Options ▸ Default edit summaries…"""
+        lang = self.session.site.lang_code if self.session else "en"
+        dialog = SummaryEditorDialog(self.config.preferences.summaries_for(lang), self)
+        if dialog.exec() == SummaryEditorDialog.DialogCode.Accepted:
+            self._save_preferences(
+                replace(self.config.preferences, summaries=dialog.value(), custom_summaries=True)
+            )
+
+    def _fill_summaries(self) -> None:
+        """The Default summary box: the saved summaries for this wiki, keeping what is typed."""
+        lang = self.session.site.lang_code if self.session else "en"
+        current = self.summary.currentText()
+        self.summary.clear()
+        self.summary.addItems(list(self.config.preferences.summaries_for(lang)))
+        self.summary.setEditText(current)
+
     def find_in_editor(self, text: str, is_regex: bool, case_sensitive: bool) -> None:
         """The Start tab's Find: the next match in the editor (.NET regex syntax via core.rx)."""
         content = self.editor.toPlainText()
@@ -1518,6 +1584,7 @@ class MainWindow(QMainWindow):
                 return
         loop, result = self.loop, self.current
         self.last_text = self.editor.toPlainText()  # kept in case the save fails
+        self.save_timer.restart()
         summary = self.review_summary.currentText()
         minor, watch = self.minor.isChecked(), self.watch.currentData()
         self._set_busy(True, self.tr("Saving…"))
@@ -1716,6 +1783,33 @@ class MainWindow(QMainWindow):
             if prefs.word_wrap
             else QPlainTextEdit.LineWrapMode.NoWrap
         )
+        set_low_priority(prefs.low_priority)
+        self.save_timer.set_enabled(prefs.show_timer)
+        self.autosave.configure(
+            prefs.autosave_edit_box, prefs.autosave_seconds, prefs.autosave_path()
+        )
+        self._set_tray(prefs.minimize_to_tray)
+        self._fill_summaries()
+
+    def _set_tray(self, on: bool) -> None:
+        """Preferences ▸ minimize to the notification area (where the desktop has one)."""
+        if on and self.tray is None and TrayIcon.isSystemTrayAvailable():
+            self.tray = TrayIcon(self, self.close)
+            self.tray.show()
+        elif not on and self.tray is not None:
+            self.tray.hide()
+            self.tray.deleteLater()
+            self.tray = None
+
+    def changeEvent(self, event: QEvent) -> None:
+        """Minimized with the tray icon on: hide the window (AWB's MainForm_Resize)."""
+        super().changeEvent(event)
+        if (
+            event.type() == QEvent.Type.WindowStateChange
+            and self.isMinimized()
+            and self.tray is not None
+        ):
+            QTimer.singleShot(0, self.hide)
 
     # -- wiki-specific editor setup -----------------------------------------------------------
 

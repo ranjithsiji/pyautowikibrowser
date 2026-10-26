@@ -21,7 +21,7 @@ the edit loop can run off the UI thread. Left out: custom modules, external prog
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -71,6 +71,27 @@ class ContainsCheck:
     @property
     def skip_reason(self) -> str:
         return ("Page doesn't contain: " if self.negate else "Page contains: ") + self.text
+
+
+# Options ▸ "Auto changes skip options" (AWB's "Skip if no…" form, SkipOptions.cs): id, label,
+# SkipOptions field
+SKIP_IF_NO: tuple[tuple[int, str, str], ...] = (
+    (1, "Title boldened", "skip_no_bold_title"),
+    (2, "External link bulleted", "skip_no_bulleted_link"),
+    (3, "Bad links fixed", "skip_no_bad_link"),
+    (4, "Unicodification", "skip_no_unicode"),
+    (5, "Auto tag changes", "skip_no_tag"),
+    (6, "Header error fixed", "skip_no_header_error"),
+    (7, "{{defaultsort}} added", "skip_no_default_sort_added"),
+    (8, "User talk templates subst'd", "skip_no_user_talk_templates_substd"),
+    (9, "Citation templates dates fixed", "skip_no_cite_template_dates_fixed"),
+    (10, "Human category changes", "skip_no_people_categories_fixed"),
+)
+
+
+def skip_options(ids: Collection[int]) -> SkipOptions:
+    """SkipOptions with the chosen "Skip if no…" ids on."""
+    return SkipOptions(**{name: i in ids for i, _, name in SKIP_IF_NO})
 
 
 @dataclass
@@ -385,9 +406,12 @@ class PageInfo:
     multiple_wikilinks: tuple[str, ...]  # "Target (count)"
 
 
-def page_info(text: str, article: Article) -> PageInfo:
-    """MainForm.ArticleInfo for the edited text (all alerts on, as AWB with no alert preferences).
-    article supplies the name and namespace; its alert checks are run on text."""
+def page_info(
+    text: str, article: Article, alerts: Collection[int] = (), typo_fixing: bool = False
+) -> PageInfo:
+    """MainForm.ArticleInfo for the edited text. alerts: the ids (settings.preferences.ALERTS)
+    to show, none meaning all, as AWB's alert preferences; typo_fixing shows the 'sic' alert
+    regardless. article supplies the name and namespace; its alert checks are run on text."""
     from pyawb.core.parsers.templates import get_all_template_detail
 
     s = W.for_site(current_site())
@@ -396,57 +420,69 @@ def page_info(text: str, article: Article) -> PageInfo:
     templates = "".join(get_all_template_detail(text))
     word_count = tools.word_count(text)
     cat_count = len(s.Category.matches(text))
-    alerts: list[str] = []
+    shown: list[str] = []
+    every = not alerts
 
-    def counted(label: str, found: Collection[object]) -> None:
-        if found:
-            alerts.append(f"{label} ({len(found)})")
+    def on(alert_id: int) -> bool:
+        return every or alert_id in alerts
 
-    if is_article and word_count > _parsers.StubMaxWordCount and s.Stub.is_match(templates):
-        alerts.append("Long article with a stub tag.")
-    if cat_count == 0 and not namespace.is_talk(info.name):
-        alerts.append("No category (may be one in a template)")
-    if is_article and info.has_morefootnotes_and_many_references:
-        alerts.append("Has 'No/More footnotes' template yet many references")
-    if info.has_ref_after_reflist:
-        alerts.append("Has a <ref> after <references/>")
-    if info.is_disambiguation_page_with_refs:
-        alerts.append("DAB page with <ref>s")
-    if is_article and text.startswith("=="):
-        alerts.append("Starts with heading")
-    if info.has_bare_references:
-        alerts.append("Unformatted references")
-    if len(s.Defaultsort.matches(templates)) > 1:
-        alerts.append("Multiple DEFAULTSORTs")
-    counted("Dead links", info.dead_links())
-    counted("Ambiguous citation dates", info.ambiguous_cite_template_dates())
-    counted("Unbalanced brackets", info.unbalanced_brackets())
-    counted("Invalid citation parameter(s)", info.bad_cite_parameters())
-    counted("Links with no target", info.targetless_links())
-    counted("Links with double pipes", info.doublepipe_links())
+    def counted(alert_id: int, label: str, found: Callable[[], Collection[object]]) -> None:
+        if on(alert_id):
+            items = found()
+            if items:
+                shown.append(f"{label} ({len(items)})")
+
+    if (
+        on(12)
+        and is_article
+        and word_count > _parsers.StubMaxWordCount
+        and s.Stub.is_match(templates)
+    ):
+        shown.append("Long article with a stub tag.")
+    if on(14) and cat_count == 0 and not namespace.is_talk(info.name):
+        shown.append("No category (may be one in a template)")
+    if on(7) and is_article and info.has_morefootnotes_and_many_references:
+        shown.append("Has 'No/More footnotes' template yet many references")
+    if on(6) and info.has_ref_after_reflist:
+        shown.append("Has a <ref> after <references/>")
+    if on(3) and info.is_disambiguation_page_with_refs:
+        shown.append("DAB page with <ref>s")
+    if on(16) and is_article and text.startswith("=="):
+        shown.append("Starts with heading")
+    if on(19) and info.has_bare_references:
+        shown.append("Unformatted references")
+    if on(13) and len(s.Defaultsort.matches(templates)) > 1:
+        shown.append("Multiple DEFAULTSORTs")
+    counted(4, "Dead links", info.dead_links)
+    counted(1, "Ambiguous citation dates", info.ambiguous_cite_template_dates)
+    counted(17, "Unbalanced brackets", info.unbalanced_brackets)
+    counted(9, "Invalid citation parameter(s)", info.bad_cite_parameters)
+    counted(11, "Links with no target", info.targetless_links)
+    counted(10, "Links with double pipes", info.doublepipe_links)
     counted(
+        5,
         "Duplicate parameter(s) in WPBannerShell",
-        info.duplicate_wiki_project_banner_shell_parameters(),
+        info.duplicate_wiki_project_banner_shell_parameters,
     )
-    unknown = info.unknown_wiki_project_banner_shell_parameters()
+    unknown = info.unknown_wiki_project_banner_shell_parameters() if on(21) else []
     if unknown:
-        alerts.append(
+        shown.append(
             "Unknown parameters in WikiProject banner shell:  "
             f"({len(unknown)}) " + ",".join(unknown)
         )
-    unknown = info.unknown_multiple_issues_parameters()
+    unknown = info.unknown_multiple_issues_parameters() if on(20) else []
     if unknown:
-        alerts.append(
+        shown.append(
             f"Unknown parameters in Multiple issues:  ({len(unknown)}) " + ", ".join(unknown)
         )
-    counted("Header(s) with wikilinks", info.wiki_linked_headers())
-    counted("Unclosed tag(s)", info.unclosed_tags())
-    if info.has_see_also_after_notes_references_or_external_links:
-        alerts.append("See also section out of place")
-    if info.has_sic_tag:
-        alerts.append("Contains 'sic' tag")
+    counted(8, "Header(s) with wikilinks", info.wiki_linked_headers)
+    counted(18, "Unclosed tag(s)", info.unclosed_tags)
+    if on(15) and info.has_see_also_after_notes_references_or_external_links:
+        shown.append("See also section out of place")
+    if (on(2) or typo_fixing) and info.has_sic_tag:
+        shown.append("Contains 'sic' tag")
     if is_article:
-        counted("Editor's signature or link to user space", info.user_signature())
+        counted(22, "Editor's signature or link to user space", info.user_signature)
 
     images = s.ImagesCountOnly.matches(text)
     no_images_urls = W.ExternalLinksHTTPOnlyQuick.replace(
@@ -464,32 +500,35 @@ def page_info(text: str, article: Article) -> PageInfo:
         dates_international=dates[locale.INTERNATIONAL],
         dates_american=dates[locale.AMERICAN],
     )
-    return PageInfo(stats, tuple(alerts), tuple(tools.duplicate_wiki_links(text)))
+    return PageInfo(stats, tuple(shown), tuple(tools.duplicate_wiki_links(text)))
 
 
-def page_errors(text: str, article: Article) -> tuple[tuple[int, int], ...]:
+def page_errors(
+    text: str, article: Article, alerts: Collection[int] = ()
+) -> tuple[tuple[int, int], ...]:
     """MainForm.HighlightErrors' sources, for Options ▸ Highlight errors: (start, length) of
-    each problem the alerts count, in text, first source first where two start at the same
-    place, sorted by position."""
+    each problem the shown alerts count (alerts as for page_info), in text, first source first
+    where two start at the same place, sorted by position."""
     info = Article(article.name, text, article.namespace_key)
     found: dict[int, int] = {}
-    sources: list[dict[int, int]] = [
-        info.unbalanced_brackets(),
-        info.bad_cite_parameters(),
-        info.duplicate_wiki_project_banner_shell_parameters(),
-        info.dead_links(),
-        info.ambiguous_cite_template_dates(),
-        info.unclosed_tags(),
-        info.wiki_linked_headers(),
-        info.targetless_links(),
-        info.doublepipe_links(),
+    checks: list[tuple[int, Callable[[], dict[int, int]]]] = [
+        (17, info.unbalanced_brackets),
+        (9, info.bad_cite_parameters),
+        (5, info.duplicate_wiki_project_banner_shell_parameters),
+        (4, info.dead_links),
+        (1, info.ambiguous_cite_template_dates),
+        (18, info.unclosed_tags),
+        (8, info.wiki_linked_headers),
+        (11, info.targetless_links),
+        (10, info.doublepipe_links),
     ]
-    if info.has_see_also_after_notes_references_or_external_links:
+    sources = [check() for alert_id, check in checks if not alerts or alert_id in alerts]
+    if (not alerts or 15 in alerts) and info.has_see_also_after_notes_references_or_external_links:
         see_also = W.for_site(current_site()).SeeAlso
         heading = next((h for h in W.Headings.matches(text) if see_also.is_match(h.value)), None)
         if heading is not None:
             sources.append({heading.index: heading.length})
-    if info.namespace_key == namespace.Namespace.ARTICLE:
+    if info.namespace_key == namespace.Namespace.ARTICLE and (not alerts or 22 in alerts):
         sources.append(info.user_signature())
     for errors in sources:
         for start, length in errors.items():

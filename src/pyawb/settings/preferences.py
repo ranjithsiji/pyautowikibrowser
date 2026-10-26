@@ -20,9 +20,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 THEMES = ("system", "light", "dark")
-ON_LOAD = ("diff", "edit")
+ON_LOAD = ("diff", "preview", "edit")  # AWB's "On load": show changes / preview / edit box
 
 # script -> languages (MediaWiki codes); anything else is Latin. Names are Qt's
 # QFontDatabase.WritingSystem names where Qt has one.
@@ -145,16 +146,94 @@ class FontChoice:
 PASTE_MORE_SLOTS = 10
 
 
+# Options ▸ Preferences ▸ Alerts (AWB Preferences.cs ids): which alerts the Start tab shows;
+# none chosen shows them all, as in AWB
+ALERTS: tuple[tuple[int, str], ...] = (
+    (1, "Ambiguous citation dates"),
+    (2, "Contains 'sic' tag"),
+    (3, "DAB page with <ref>s"),
+    (4, "Dead links"),
+    (5, "Duplicate parameters in WPBannerShell"),
+    (6, "Has <ref> after </references>"),
+    (7, "Has 'No/More footnotes' template yet many references"),
+    (8, "Headers with wikilinks"),
+    (9, "Invalid citation parameters"),
+    (10, "Links with double pipes"),
+    (11, "Links with no target"),
+    (12, "Long article with stub tag"),
+    (13, "Multiple DEFAULTSORT"),
+    (14, "No category (may be one in a template)"),
+    (15, "See also section out of place"),
+    (16, "Starts with heading"),
+    (17, "Unbalanced brackets"),
+    (18, "Unclosed tags"),
+    (19, "Unformatted references"),
+    (20, "Unknown parameters in multiple issues"),
+    (21, "Unknown parameters in WikiProject banner shell"),
+    (22, "Editor's signature or link to user space"),
+)
+
+# AWB's LoadDefaultEditSummaries: English Wikipedia's wording, offered on English-language wikis
+DEFAULT_SUMMARIES: tuple[str, ...] = (
+    "clean up",
+    "re-categorisation per [[WP:CFD|CFD]]",
+    "clean up and re-categorisation per [[WP:CFD|CFD]]",
+    "removing category per [[WP:CFD|CFD]]",
+    "[[Wikipedia:Template substitution|subst:'ing]]",
+    "[[Wikipedia:WikiProject Stub sorting|stub sorting]]",
+    "[[WP:AWB/T|Typo fixing]]",
+    "bad link repair",
+    "Fixing [[Wikipedia:Disambiguation pages with links|links to disambiguation pages]]",
+    "Unicodifying",
+)
+
+AUTOSAVE_SECONDS = (5, 3600)  # the edit box auto-save period's range
+
+
+def default_autosave_file() -> Path:
+    """AWB's "Edit Box.txt", in PyAWB's data directory."""
+    from pyawb import paths
+
+    return paths.data_dir() / "Edit Box.txt"
+
+
 @dataclass(frozen=True)
 class Preferences:
     theme: str = "system"  # system / light / dark
     language: str = ""  # the interface language ("" = the system's)
-    on_load: str = "diff"  # what to show when a page is loaded: the diff, or the edit box
+    on_load: str = "diff"  # what to show when a page is loaded: diff, preview or the edit box
     warn_on_exit: bool = True
     word_wrap: bool = True
     # the edit box's Paste more ▸ texts (Ctrl+1 … Ctrl+0); AWB kept them in the settings file
     paste_more: tuple[str, ...] = ("",) * PASTE_MORE_SLOTS
+    # AWB Preferences: General
+    minimize_to_tray: bool = False
+    low_priority: bool = False  # process pages in low-priority threads
+    # Site. AWB's "Suppress 'using AWB'" is left out: AWB enables it only on non-Wikimedia
+    # wikis, where no tag is added anyway; on Wikimedia wikis only bots may drop the tag.
+    clear_list_on_wiki_change: bool = False
+    # Editing and saving
+    autosave_edit_box: bool = False
+    autosave_seconds: int = 30
+    autosave_file: str = ""  # "" = "Edit Box.txt" in PyAWB's data directory
+    show_timer: bool = False  # seconds since the last save, in the status bar
+    flash: bool = False  # when a page is ready to save and the window is in the background
+    beep: bool = False
+    # Alerts: ids from ALERTS to show ((): all)
+    alerts: tuple[int, ...] = ()
+    # Options ▸ Default edit summaries; custom_summaries False: AWB's list on English wikis
+    summaries: tuple[str, ...] = ()
+    custom_summaries: bool = False
     fonts: Mapping[str, FontChoice] = field(default_factory=dict[str, FontChoice])
+
+    def autosave_path(self) -> Path:
+        return Path(self.autosave_file) if self.autosave_file else default_autosave_file()
+
+    def summaries_for(self, lang: str) -> tuple[str, ...]:
+        """The Default summary list for a wiki in language lang."""
+        if self.custom_summaries:
+            return self.summaries
+        return DEFAULT_SUMMARIES if lang == "en" or lang.startswith("en-") else ()
 
     def font_for(self, script: str) -> FontChoice:
         return self.fonts.get(script, FontChoice())

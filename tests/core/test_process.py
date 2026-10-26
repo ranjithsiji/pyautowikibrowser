@@ -182,3 +182,20 @@ def test_same_rendering() -> None:
     assert same_rendering("<p>A</p><p><br></p>\n", [], "<p>A</p>", [])
     assert not same_rendering("<p>A</p>", ["cat:X"], "<p>A</p>", ["cat:Y"])
     assert not same_rendering("<p>A</p>", [], "<p>B</p>", [])
+
+
+def test_alert_preferences_filter() -> None:
+    from pyawb.core.article import Article
+    from pyawb.core.process import page_errors, page_info, skip_options
+
+    text = "No category here [[a||b]] and [[c"
+    art = Article("X", text)
+    everything = page_info(text, art).alerts
+    assert any("No category" in a for a in everything)
+    assert any("double pipes" in a for a in everything)
+    only = page_info(text, art, alerts=(10,)).alerts
+    assert only == ("Links with double pipes (1)",)
+    assert page_errors(text, art, alerts=(17,)) != page_errors(text, art, alerts=(10,))
+    assert page_errors(text, art, alerts=(14,)) == ()  # "No category" has no position
+    s = skip_options({1, 7})
+    assert s.skip_no_bold_title and s.skip_no_default_sort_added and not s.skip_no_tag

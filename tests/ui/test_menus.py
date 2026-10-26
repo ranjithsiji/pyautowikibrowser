@@ -30,6 +30,7 @@ def test_menu_bar(qtbot: QtBot) -> None:
     assert titles == ["File", "View", "List", "Options", "Tools", "Settings", "Help"]
     assert menu(w, "Options") == [
         "Preferences…",
+        "Default edit summaries…",
         "Use pre-parse mode",
         "Follow redirects",
         "Apply changes automatically",

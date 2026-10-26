@@ -50,9 +50,12 @@ from pyawb import paths
 from pyawb.settings import languages
 from pyawb.settings.appconfig import AppConfig
 from pyawb.settings.preferences import (
+    ALERTS,
+    AUTOSAVE_SECONDS,
     SAMPLES,
     FontChoice,
     Preferences,
+    default_autosave_file,
     font_install_help,
     suggest_font,
 )
@@ -383,7 +386,7 @@ class SettingsDialog(QDialog):
     """Settings → Theme / Language / Fonts / User profiles / Preferences (one dialog, one tab
     each). The result is the updated configuration (updated_config)."""
 
-    PAGES = ("theme", "language", "fonts", "profiles", "general")
+    PAGES = ("theme", "language", "fonts", "profiles", "general", "alerts")
 
     def __init__(
         self,
@@ -491,21 +494,80 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(profiles, self.tr("User profiles"))
         self._fill_profiles()
 
-        # general
+        # general (AWB Preferences: General, Site, Editing and saving)
         general = QWidget(self)
         self.on_load = QComboBox(general)
         self.on_load.addItem(self.tr("Show the diff"), "diff")
+        self.on_load.addItem(self.tr("Show the preview"), "preview")
         self.on_load.addItem(self.tr("Show the edit box"), "edit")
         self.on_load.setCurrentIndex(max(self.on_load.findData(prefs.on_load), 0))
         self.warn_on_exit = QCheckBox(self.tr("Ask before closing"), general)
         self.warn_on_exit.setChecked(prefs.warn_on_exit)
         self.word_wrap = QCheckBox(self.tr("Wrap long lines in the editor"), general)
         self.word_wrap.setChecked(prefs.word_wrap)
+        self.minimize_to_tray = QCheckBox(self.tr("Minimize to the notification area"), general)
+        self.minimize_to_tray.setChecked(prefs.minimize_to_tray)
+        self.low_priority = QCheckBox(
+            self.tr("Low priority (works better in the background)"), general
+        )
+        self.low_priority.setChecked(prefs.low_priority)
+        self.clear_list = QCheckBox(self.tr("Empty the page list when the wiki changes"), general)
+        self.clear_list.setChecked(prefs.clear_list_on_wiki_change)
+        self.autosave = QCheckBox(self.tr("Save the edit box to a file every"), general)
+        self.autosave.setChecked(prefs.autosave_edit_box)
+        self.autosave_seconds = QSpinBox(general)
+        self.autosave_seconds.setRange(*AUTOSAVE_SECONDS)
+        self.autosave_seconds.setSuffix(self.tr(" s"))
+        self.autosave_seconds.setValue(prefs.autosave_seconds)
+        self.autosave_file = QLineEdit(prefs.autosave_file, general)
+        self.autosave_file.setPlaceholderText(str(default_autosave_file()))
+        browse = QPushButton(self.tr("Browse…"), general)
+        browse.clicked.connect(self._browse_autosave)
+        for w in (self.autosave_seconds, self.autosave_file, browse):
+            w.setEnabled(prefs.autosave_edit_box)
+            self.autosave.toggled.connect(w.setEnabled)
+        autosave_row = QHBoxLayout()
+        autosave_row.addWidget(self.autosave)
+        autosave_row.addWidget(self.autosave_seconds)
+        autosave_row.addStretch(1)
+        file_row = QHBoxLayout()
+        file_row.addWidget(self.autosave_file, 1)
+        file_row.addWidget(browse)
+        self.show_timer = QCheckBox(self.tr("Show the time since the last save"), general)
+        self.show_timer.setChecked(prefs.show_timer)
+        self.flash = QCheckBox(self.tr("Flash"), general)
+        self.flash.setChecked(prefs.flash)
+        self.beep = QCheckBox(self.tr("Beep"), general)
+        self.beep.setChecked(prefs.beep)
+        ready_row = QHBoxLayout()
+        ready_row.addWidget(self.flash)
+        ready_row.addWidget(self.beep)
+        ready_row.addStretch(1)
         gl = QFormLayout(general)
         gl.addRow(self.tr("When a page is loaded"), self.on_load)
-        gl.addRow("", self.warn_on_exit)
-        gl.addRow("", self.word_wrap)
+        for w in (self.warn_on_exit, self.word_wrap, self.minimize_to_tray, self.low_priority):
+            gl.addRow("", w)
+        gl.addRow(self.tr("Site"), self.clear_list)
+        gl.addRow(self.tr("Editing and saving"), autosave_row)
+        gl.addRow("", file_row)
+        gl.addRow("", self.show_timer)
+        gl.addRow(self.tr("When ready to save"), ready_row)
         self.tabs.addTab(general, self.tr("Preferences"))
+
+        # alerts (AWB Preferences: Alerts); none checked shows them all, as in AWB
+        alerts = QWidget(self)
+        self.alerts = QListWidget(alerts)
+        self.alerts.setObjectName("checkList")
+        for alert_id, label in ALERTS:
+            item = QListWidgetItem(self.tr(label), self.alerts)
+            item.setData(Qt.ItemDataRole.UserRole, alert_id)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            on = not prefs.alerts or alert_id in prefs.alerts
+            item.setCheckState(Qt.CheckState.Checked if on else Qt.CheckState.Unchecked)
+        al = QVBoxLayout(alerts)
+        al.addWidget(QLabel(self.tr("Alerts shown on the Start tab for each page:"), alerts))
+        al.addWidget(self.alerts, 1)
+        self.tabs.addTab(alerts, self.tr("Alerts"))
 
         ok_cancel = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
@@ -578,7 +640,35 @@ class SettingsDialog(QDialog):
             on_load=str(self.on_load.currentData()),
             warn_on_exit=self.warn_on_exit.isChecked(),
             word_wrap=self.word_wrap.isChecked(),
+            minimize_to_tray=self.minimize_to_tray.isChecked(),
+            low_priority=self.low_priority.isChecked(),
+            clear_list_on_wiki_change=self.clear_list.isChecked(),
+            autosave_edit_box=self.autosave.isChecked(),
+            autosave_seconds=self.autosave_seconds.value(),
+            autosave_file=self.autosave_file.text().strip(),
+            show_timer=self.show_timer.isChecked(),
+            flash=self.flash.isChecked(),
+            beep=self.beep.isChecked(),
+            alerts=self.chosen_alerts(),
         )
+
+    def chosen_alerts(self) -> tuple[int, ...]:
+        """The checked alerts; all of them checked is stored as () (show all)."""
+        chosen: list[int] = []
+        for i in range(self.alerts.count()):
+            item = self.alerts.item(i)
+            if item is not None and item.checkState() == Qt.CheckState.Checked:
+                chosen.append(int(item.data(Qt.ItemDataRole.UserRole)))
+        return () if len(chosen) == len(ALERTS) else tuple(chosen)
+
+    def _browse_autosave(self) -> None:
+        name, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("Edit box file"),
+            self.autosave_file.text() or str(default_autosave_file()),
+        )
+        if name:
+            self.autosave_file.setText(name)
 
     def updated_config(self) -> AppConfig:
         return replace(self.config, preferences=self.preferences())

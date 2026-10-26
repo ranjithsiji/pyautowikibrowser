@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import enum
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from pyawb.api.errors import BrokenResponseException
@@ -37,6 +37,7 @@ class UserInfo:
     rights: frozenset[str] = frozenset()
     is_blocked: bool = False
     has_messages: bool = False
+    notifications: int = 0  # unread notifications (Echo), as of the last page opened
 
     @classmethod
     def from_json(cls, result: Mapping[str, Any]) -> UserInfo:
@@ -51,6 +52,21 @@ class UserInfo:
             rights=frozenset(u.get("rights", ())),
             is_blocked="blockedby" in u or "blockid" in u,
             has_messages=bool(u.get("messages", False)),
+        )
+
+    def updated(self, result: Mapping[str, Any]) -> UserInfo:
+        """UserInfo.Update: the new-message flag and notification count from a query that
+        asked for them (userinfo with hasmsg, notifications with count)."""
+        query: Mapping[str, Any] = result.get("query", {})
+        u: Mapping[str, Any] | None = query.get("userinfo")
+        if u is None:
+            return self
+        notes: Mapping[str, Any] = query.get("notifications", {})
+        raw = notes.get("rawcount", 0)
+        return replace(
+            self,
+            has_messages=bool(u.get("messages", False)),
+            notifications=raw if isinstance(raw, int) else 0,
         )
 
     @property
