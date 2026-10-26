@@ -179,12 +179,12 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Start: False (false positives) | done | |
 | Start: shortcuts Ctrl+G start, Esc stop | done | |
 | Edit box | done | |
-| History tab (+ diffs, context menu: open in browser, refresh) | missing | C |
-| What links here tab | missing | C |
+| History tab (+ diffs, context menu: open in browser, refresh) | done | a table from the API (AWB: a web page); double click opens that edit's diff |
+| What links here tab | done | links, redirects and transclusions; add to the page list |
 | Edit summary tab | done (the page's summary above the editor) | |
 | Logs (saved/skipped, save, clear, add all to list) | done | newest first, as AWB |
-| Page logs (move/protect/delete) | missing | C |
-| Typos tab (on this page / overall statistics) | missing (engine `get_statistics`) | C |
+| Page logs (move/protect/delete) | done (the tab) | filled by the admin actions of C3 |
+| Typos tab (on this page / overall statistics) | done | shown while a typo list is loaded, as AWB |
 
 ## Context menus
 
@@ -203,7 +203,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Edit box: re-parse (F5), comment selected | done | comment is Ctrl+Shift+K: Ctrl+K is WikiEditor's link dialog |
 | Edit box: open page / talk page / history / selection in browser | done | |
 | Edit box: replace text with last edit, undo all changes | done | |
-| History: open in browser, refresh | missing | C |
+| History: open in browser, refresh | done | |
 | Logs: add selected to list, cut, copy, remove, select all/none, open page/diff/history in browser, clear, reset; skipped: filter (exclude) by reason | done | |
 
 ## From the manual's screenshots
@@ -290,7 +290,7 @@ running app with screenshots. One commit per step.
 | B1 ✔ | **List filter** dialog (namespaces, title, set operations, sort, duplicates) | `ListFilterForm.cs` | Database Scanner: results Filter uses the same dialog |
 | B2 ✔ | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |
 | B3 ✔ | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
-| C1 | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
+| C1 ✔ | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
 | C2 | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
 | C3 | Admin actions **Watch/Unwatch, Move, Protect, Delete** (+ "using AWB" summaries) and bypass all redirects | `ArticleActionDialog.cs`, `Article.cs` | User manual: Start tab admin buttons |
 | C4 | **Bots** tab: auto save with delay, max edits, nudge timer, auto shutdown (bot accounts per CheckPage only) | `Main.cs` bot mode, `NudgeTimer.cs`, `ShutdownNotification.cs` | User manual: Bots |

@@ -34,6 +34,7 @@ from pyawb.core.parsers import parsers as _parsers
 from pyawb.core.parsers.hidetext import HideText
 from pyawb.core.parsers.parsers import Parsers
 from pyawb.core.site import use_site
+from pyawb.rules.typos import RegExTypoFix, TypoStat
 
 
 class Mode(enum.Enum):
@@ -96,6 +97,7 @@ class LoadResult:
     in_use: bool = False  # {{inuse}} without "skip if in use": AWB warns
     mode: Mode = Mode.EDIT
     new_messages: bool = False  # the user has new talk page messages: AWB stops
+    typo_stats: list[TypoStat] | None = None  # the typo rules that matched (typo fixing on)
 
     @property
     def skipped(self) -> bool:
@@ -181,6 +183,8 @@ class EditLoop:
             return self._alerts_skip(result, opts) or result
         self.parsers.sort_interwikis = opts.sort_interwikis
         process.process_page(article, opts.process, self.parsers, self.remove_text)
+        if isinstance(opts.process.typos, RegExTypoFix):
+            result.typo_stats = opts.process.typos.get_statistics()
 
         # RunSkipChecks
         if article.skip_article:
@@ -277,10 +281,20 @@ class EditLoop:
             process.process_page(
                 article, opts.process, self.parsers, self.remove_text, main_process=False
             )
+            if isinstance(opts.process.typos, RegExTypoFix):
+                result.typo_stats = opts.process.typos.get_statistics()
             result.summary = process.make_default_edit_summary(
                 article, opts.summary, article.article_text, opts.section_summary
             )
         return article.article_text
+
+    def history(self, title: str) -> list[pageinfo.Revision]:
+        """The History tab's revisions."""
+        return pageinfo.page_history(self.session.transport, title)
+
+    def what_links_here(self, title: str) -> list[pageinfo.Backlink]:
+        """The What links here tab's pages."""
+        return pageinfo.what_links_here(self.session.transport, title)
 
     def redirect_targets(self, titles: list[str]) -> dict[str, str]:
         """For Bypass all redirects: which of titles are redirects, and to where."""

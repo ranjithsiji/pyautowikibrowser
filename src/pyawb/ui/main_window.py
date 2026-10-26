@@ -104,6 +104,7 @@ from pyawb.ui.login_dialog import LoginDialog
 from pyawb.ui.logs_tab import LogsTab
 from pyawb.ui.option_dialogs import SummaryEditorDialog
 from pyawb.ui.options_panel import OptionsError, OptionsPanel
+from pyawb.ui.page_tabs import HistoryTab, LinksTab, PageLogsTab, TyposTab
 from pyawb.ui.regex_tester import RegexTesterDialog
 from pyawb.ui.settings_dialog import SettingsDialog
 from pyawb.ui.start_screen import StartResult
@@ -235,8 +236,19 @@ class MainWindow(QMainWindow):
         self.logs = LogsTab(self)
         self.edit_tabs = QTabWidget(self)
         self.edit_tabs.setObjectName("editTabs")
+        self.history_tab = HistoryTab(self)
+        self.links_tab = LinksTab(self)
+        self.page_logs = PageLogsTab(self)
+        self.typos_tab = TyposTab(self)  # added while a typo list is loaded, as AWB
         self.edit_tabs.addTab(edit_box, self.tr("Edit box"))
+        self.edit_tabs.addTab(self.history_tab, self.tr("History"))
+        self.edit_tabs.addTab(self.links_tab, self.tr("What links here"))
         self.edit_tabs.addTab(self.logs, self.tr("Logs"))
+        self.edit_tabs.addTab(self.page_logs, self.tr("Page logs"))
+        self.edit_tabs.currentChanged.connect(lambda _i: self._load_page_tab())
+        self.history_tab.refresh_requested.connect(lambda: self._load_page_tab(force=True))
+        self.links_tab.refresh_requested.connect(lambda: self._load_page_tab(force=True))
+        self.typos_tab.test_regex.connect(self._test_typo)
 
         # -- control tabs (Options, More, Skip from the panel; Start) --
         self.options = OptionsPanel(self)
@@ -287,6 +299,8 @@ class MainWindow(QMainWindow):
         self.list_maker.status.connect(self.set_status)
         self.list_maker.changed.connect(self._update_buttons)
         self.logs.add_to_list.connect(self._add_titles)
+        self.links_tab.add_to_list.connect(self._add_titles)
+        self.page_logs.add_to_list.connect(self._add_titles)
         dock = QDockWidget(self.tr("Make list"), self)
         dock.setObjectName("listDock")
         dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
@@ -1107,6 +1121,7 @@ class MainWindow(QMainWindow):
                 self._typos_unavailable(fixer.error or self.tr("The typo list has no rules"))
                 return
             self.typos = fixer
+            self._show_typos_tab(True)
             loaded = self.tr("%1 typos loaded").replace("%1", str(fixer.typo_count))
             self.options.typo_status.setText(loaded + " (" + where + ")")
             self.set_status(loaded)
@@ -1122,7 +1137,17 @@ class MainWindow(QMainWindow):
         self.options.typo_status.setText(self.tr("Loading the typo list…"))
         run_task(work, done, failed)
 
+    def _show_typos_tab(self, on: bool) -> None:
+        """RegexTyposComplete: the Typos tab while a list is loaded, statistics reset."""
+        index = self.edit_tabs.indexOf(self.typos_tab)
+        if on and index < 0:
+            self.edit_tabs.addTab(self.typos_tab, self.tr("Typos"))
+        elif not on and index >= 0:
+            self.edit_tabs.removeTab(index)
+        self.typos_tab.clear()
+
     def _typos_unavailable(self, why: str) -> None:
+        self._show_typos_tab(False)
         self.options.typo_status.setText(self.tr("Not loaded: %1").replace("%1", why))
         self.options.fix_typos.setChecked(False)
 
@@ -1177,6 +1202,7 @@ class MainWindow(QMainWindow):
         self.editor.setReadOnly(self.mode is Mode.READ_ONLY)
         self.highlight()
         self._place_cursor()
+        self.typos_tab.page_stats(result.typo_stats)
         self._update_buttons()
         if self.mode is Mode.READ_ONLY:
             self.set_status(self.tr("Read only: %1").replace("%1", title))
@@ -1291,6 +1317,7 @@ class MainWindow(QMainWindow):
             self._report_timeouts()
             self.highlight()
             self._place_cursor()
+            self.typos_tab.page_stats(result.typo_stats)
             self.show_diff()
 
         run_task(lambda: loop.reparse(result, text, opts), done, self._step_failed)
@@ -1541,6 +1568,43 @@ class MainWindow(QMainWindow):
         self.summary.addItems(list(self.config.preferences.summaries_for(lang)))
         self.summary.setEditText(current)
 
+    def _load_page_tab(self, force: bool = False) -> None:
+        """History and What links here: load for the current page when the tab is shown
+        (tabControl2_SelectedIndexChanged), once per page unless refreshed."""
+        tab = self.edit_tabs.currentWidget()
+        title = self.current_title()
+        if self.loop is None or not title or tab not in (self.history_tab, self.links_tab):
+            return
+        if not force and not tab.needs(title):  # type: ignore[union-attr]
+            return
+        loop, site = self.loop, self.wiki_site()
+        if tab is self.history_tab:
+            self.history_tab.site = site
+            self.history_tab.show_message(self.tr("Loading the history…"))
+            run_task(
+                lambda: loop.history(title),
+                lambda revs: self.history_tab.show_history(title, revs),
+                lambda e: self.history_tab.show_message(
+                    self.tr("Unable to load history: %1").replace("%1", str(e))
+                ),
+            )
+        else:
+            self.links_tab.site = site
+            self.links_tab.show_message(self.tr("Loading what links here…"))
+            run_task(
+                lambda: loop.what_links_here(title),
+                lambda links: self.links_tab.show_links(title, links),
+                lambda e: self.links_tab.show_message(
+                    self.tr("Unable to load What Links Here: %1").replace("%1", str(e))
+                ),
+            )
+
+    def _test_typo(self, find: str, replace: str) -> None:
+        """Typos ▸ Test regex…: the rule in the regex tester with the edit box's text."""
+        tester = RegexTesterDialog(find, replace, text=self.editor.toPlainText(), parent=self)
+        tester.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        tester.show()
+
     def find_in_editor(self, text: str, is_regex: bool, case_sensitive: bool) -> None:
         """The Start tab's Find: the next match in the editor (.NET regex syntax via core.rx)."""
         content = self.editor.toPlainText()
@@ -1604,6 +1668,7 @@ class MainWindow(QMainWindow):
         if result is not None and result.page is not None and not result.page.exists:
             self.new_pages += 1
         if result is not None:
+            self.typos_tab.add_overall(result.typo_stats, skipped=False)
             self.logs.log_saved(
                 result.page.title if result.page else result.title,
                 info.new_revision_id if isinstance(info, SaveInfo) else 0,
@@ -1648,6 +1713,8 @@ class MainWindow(QMainWindow):
         else:
             self.logs.log_skipped(title, "AWB", reason)
             why = reason
+            # a page skipped by the checks: its typo changes count as false positives
+            self.typos_tab.add_overall(self.current.typo_stats, skipped=True)
         self.set_status(self.tr("Skipped %1: %2").replace("%1", title).replace("%2", why))
         self._update_counts()
         self._done_with_page(ArticleList.SKIPPED)

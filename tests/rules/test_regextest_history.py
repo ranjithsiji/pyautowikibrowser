@@ -36,3 +36,21 @@ def test_rule_history() -> None:
     assert [r.name for r in again] == ["A", "B"]
     first[0].name = "changed"  # snapshots are copies
     assert [r.name for r in h.undo(again)] == ["A"]
+
+
+def test_overall_typo_stats() -> None:
+    from pyawb.rules.typos import OverallTypoStats, TypoStat
+
+    o = OverallTypoStats()
+    assert o.typos_per_save == "0"
+    o.update([TypoStat("teh", "the", total=3, self_matches=1)], skipped=False)
+    o.update(
+        [TypoStat("teh", "the", total=2), TypoStat("recieve", "receive", total=1)], skipped=True
+    )
+    assert o.pages == 2 and o.saves == 1
+    assert o.total_typos == 6 and o.self_matches == 1
+    assert o.false_positives == 2  # the skipped page's changes to "teh"
+    assert o.typos_per_save == "3.00"
+    assert "Total: 6" in o.log_text() and "teh, the, 5, 1" in o.log_text()
+    o.clear()
+    assert o.total_typos == 0 and o.pages == 0

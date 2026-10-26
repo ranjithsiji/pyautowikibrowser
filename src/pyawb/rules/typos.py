@@ -356,3 +356,66 @@ class RegExTypoFix:
     def get_typos(self) -> list[tuple[str, str]]:
         """(find, replace) of every loaded rule, grouped as they are applied."""
         return [(t.regex.pattern, t.replace) for g in self._groups for t in g.typos]
+
+
+@dataclass
+class OverallTypoStats:
+    """The Typos tab's overall statistics (TypoStatsControl with IsOverallStats): per rule
+    totals over the pages done, and the counts under the table."""
+
+    data: dict[str, TypoStat] = field(default_factory=dict[str, TypoStat])
+    saves: int = 0
+    pages: int = 0
+
+    def update(self, stats: Iterable[TypoStat], skipped: bool) -> None:
+        """UpdateStats: add one page's statistics; on a skipped page every change counts as a
+        false positive."""
+        for typo in stats:
+            old = self.data.get(typo.find)
+            if old is None:
+                self.data[typo.find] = TypoStat(
+                    typo.find, typo.replace, typo.total, typo.self_matches, typo.false_positives
+                )
+                continue
+            old.total += typo.total
+            old.self_matches += typo.self_matches
+            old.false_positives += typo.false_positives
+            if skipped:
+                old.false_positives += typo.total - typo.self_matches
+        self.pages += 1
+        if not skipped:
+            self.saves += 1
+
+    def clear(self) -> None:
+        self.data.clear()
+        self.saves = self.pages = 0
+
+    @property
+    def total_typos(self) -> int:
+        return sum(s.total for s in self.data.values())
+
+    @property
+    def self_matches(self) -> int:
+        return sum(s.self_matches for s in self.data.values())
+
+    @property
+    def false_positives(self) -> int:
+        return sum(s.false_positives for s in self.data.values())
+
+    @property
+    def typos_per_save(self) -> str:
+        """Fixes (total less no-change matches and false positives) per save, 2 decimals."""
+        if not self.saves:
+            return "0"
+        fixes = self.total_typos - self.self_matches - self.false_positives
+        return f"{fixes / self.saves:.2f}"
+
+    def log_text(self) -> str:
+        """miSaveLog's file."""
+        lines = [
+            f"Total: {self.total_typos}",
+            f"No change: {self.self_matches}",
+            f"Typo/save: {self.typos_per_save}",
+        ]
+        lines += [f"{s.find}, {s.replace}, {s.total}, {s.self_matches}" for s in self.data.values()]
+        return "\n".join(lines) + "\n"
