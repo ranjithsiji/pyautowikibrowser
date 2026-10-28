@@ -115,6 +115,7 @@ def _scrolled(page: QWidget) -> QScrollArea:
 
 class OptionsPanel(QTabWidget):
     typos_toggled = Signal(bool)  # "Fix typos" switched: the list is loaded on first use
+    load_dab_links = Signal(str)  # Disambig ▸ Load links: the links of this page are the variants
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -125,6 +126,7 @@ class OptionsPanel(QTabWidget):
         self.site: SiteConfig = current_site()
         self._make_options_tab()
         self._make_more_tab()
+        self._make_disambig_tab()
         self._make_skip_tab()
 
     # -- tabs ---------------------------------------------------------------------------------
@@ -272,6 +274,63 @@ class OptionsPanel(QTabWidget):
         self.file_action.currentIndexChanged.connect(self._update_more)
         self.append.toggled.connect(self._update_more)
         self._update_more()
+
+    def _make_disambig_tab(self) -> None:
+        """AWB's Disambig tab: the disambiguation page whose links are fixed, and its variants."""
+        tab = QWidget(self)
+        self.dab_enabled = QCheckBox(self.tr("Enable disambiguation"), tab)
+        link_box = QGroupBox(self.tr("Link to disambiguate"), tab)
+        self.dab_link = QLineEdit(link_box)
+        self.dab_link.setPlaceholderText(self.tr("Mercury|Mercury (disambiguation)"))
+        self.dab_load = QPushButton(self.tr("Load links"), link_box)
+        self.dab_load.setToolTip(self.tr("Fill the variants with the links on this page"))
+        self.dab_load.setEnabled(False)
+        self.dab_link.textChanged.connect(lambda t: self.dab_load.setEnabled(bool(t.strip())))
+        self.dab_load.clicked.connect(
+            lambda: self.load_dab_links.emit(self.dab_link.text().strip())
+        )
+        ll = QHBoxLayout(link_box)
+        ll.addWidget(self.dab_link, 1)
+        ll.addWidget(self.dab_load)
+        variants_box = QGroupBox(self.tr("Variants"), tab)
+        self.dab_variants = QPlainTextEdit(variants_box)
+        self.dab_variants.setPlaceholderText(self.tr("One target per line"))
+        vl = QVBoxLayout(variants_box)
+        vl.addWidget(self.dab_variants)
+        self.dab_skip = QCheckBox(self.tr("Skip page when no disambiguations made"), tab)
+        self.dab_context = QSpinBox(tab)
+        self.dab_context.setRange(0, 1000)
+        self.dab_context.setValue(20)
+        context_row = QHBoxLayout()
+        context_row.addWidget(QLabel(self.tr("Use ±"), tab))
+        context_row.addWidget(self.dab_context)
+        context_row.addWidget(QLabel(self.tr("characters for context"), tab))
+        context_row.addStretch(1)
+        panel = QWidget(tab)
+        pl = QVBoxLayout(panel)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.addWidget(link_box)
+        pl.addWidget(variants_box, 1)
+        pl.addWidget(self.dab_skip)
+        pl.addLayout(context_row)
+        panel.setEnabled(False)
+        self.dab_enabled.toggled.connect(panel.setEnabled)
+        dl = QVBoxLayout(tab)
+        dl.addWidget(self.dab_enabled)
+        dl.addWidget(panel, 1)
+        self.addTab(_scrolled(tab), self.tr("Disambig"))
+
+    def set_dab_variants(self, titles: list[str]) -> None:
+        self.dab_variants.setPlainText("\n".join(titles))
+
+    @property
+    def disambiguation_on(self) -> bool:
+        """ProcessPage's condition: enabled, with a link and some variants."""
+        return (
+            self.dab_enabled.isChecked()
+            and bool(self.dab_link.text().strip())
+            and bool(self.dab_variants.toPlainText().strip())
+        )
 
     def _make_skip_tab(self) -> None:
         """AWB's Skip tab: text conditions, general skip options (with the kinds of "no

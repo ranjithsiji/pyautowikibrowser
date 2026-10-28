@@ -378,6 +378,13 @@ class WikiSession:
             html = f'<div class="previewnote" style="color:#d33">{notes}<p></div>' + html
         return html
 
+    def watch(self, title: str, unwatch: bool = False) -> None:
+        """ApiEdit.Watch / Unwatch: add the page to the user's watchlist, or remove it."""
+        params: dict[str, Param] = {"action": "watch", "titles": title}
+        if unwatch:
+            params["unwatch"] = True
+        check_errors(self.transport.request(params, post=True, token="watch"))
+
     def rendering(self, title: str, text: str | None = None) -> Rendering:
         """The parsed page (text None: the saved revision) as Article.OnlyCosmeticChanged reads
         it: the HTML, and the categories and language links."""

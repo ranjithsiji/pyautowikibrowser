@@ -253,7 +253,7 @@ Run tests and pyright before calling any task done.
    undoes a line), A3 (Options, View, Tools and Help menus; pre-parse mode; highlighting), A4 (Skip tab
    extras, Logs context menu), B2 (Replace Special, template substitution, F&R Search, regex tester), B3 (Skip if no…, default
    summaries, Alerts and the remaining preferences; messages and notifications checked on every page), C1 (History, What links
-   here, Page logs and Typos tabs). Next: C2 Disambig, C3 admin actions, C4 bot mode, D projects (save/load, AWB settings import),
+   here, Page logs and Typos tabs), C2 (Disambig tab and dialog). Next: C3 admin actions, C4 bot mode, D projects (save/load, AWB settings import),
    E tools (regex tester, list comparer/splitter, database scanner, Python modules, plugins), then the native
    word-level diff (wikidiff2 port). Find & replace rules are kept only for the session until projects (D1).
 7. Packaging, auto-update, translatewiki.net integration (plan step F).

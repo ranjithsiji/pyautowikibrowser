@@ -27,7 +27,7 @@ import json
 import tempfile
 import time
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -84,8 +84,9 @@ from pyawb.editor.messages import Messages
 from pyawb.editor.mwconfig import MwConfig, default_config
 from pyawb.editor.toolbar import ToolbarSite, build_toolbar
 from pyawb.lists.listmaker import ArticleList
+from pyawb.lists.providers import LinksOnPageListProvider
 from pyawb.lists.sources import WikiContext, wiki_context
-from pyawb.rules import typos
+from pyawb.rules import disambiguation, typos
 from pyawb.rules.replacespecial import ReplaceSpecial
 from pyawb.rules.substtemplates import SubstTemplates
 from pyawb.rules.typos import RegExTypoFix
@@ -93,6 +94,7 @@ from pyawb.settings import appconfig
 from pyawb.settings.preferences import Preferences, is_rtl_language, script_for_language
 from pyawb.ui import theme
 from pyawb.ui.diff_view import DiffView
+from pyawb.ui.disambig_dialog import ABORTED, DisambigDialog
 from pyawb.ui.edit_box_menu import EditBoxMenu, apply_edit
 from pyawb.ui.editor_dialogs import DIALOGS, EditorDialogs, Suggest
 from pyawb.ui.editor_toolbar import WikiEditorToolbar, select
@@ -253,6 +255,7 @@ class MainWindow(QMainWindow):
         # -- control tabs (Options, More, Skip from the panel; Start) --
         self.options = OptionsPanel(self)
         self.options.typos_toggled.connect(self._typos_toggled)
+        self.options.load_dab_links.connect(self.load_dab_links)
         self.start_tab = StartTab(self)
         self.options.addTab(self.start_tab, self.tr("Start"))
         self.options.setCurrentWidget(self.start_tab)
@@ -1180,6 +1183,8 @@ class MainWindow(QMainWindow):
         if self.opts is not None and self.opts.pre_parse:
             self._pre_parsed(result)
             return
+        if not self._disambiguate(result):
+            return
 
         previous = self.current_title()
         self.current = result
@@ -1604,6 +1609,79 @@ class MainWindow(QMainWindow):
         tester = RegexTesterDialog(find, replace, text=self.editor.toPlainText(), parent=self)
         tester.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         tester.show()
+
+    def load_dab_links(self, dab_link: str) -> None:
+        """Disambig ▸ Load links: the links on the disambiguation page(s) become the variants."""
+        if self.session is None:
+            self.set_status(self.tr("Connect to a wiki to load the links"))
+            return
+        transport, site = self.session.transport, self.session.site
+
+        def work() -> list[str]:
+            with use_site(site):
+                pages = LinksOnPageListProvider(transport).make_list(
+                    *[p for p in dab_link.split("|") if p.strip()]
+                )
+            return disambiguation.variants_from_links(a.name for a in pages)
+
+        run_task(
+            work,
+            lambda titles: self.options.set_dab_variants(titles),
+            lambda e: self.set_status(
+                self.tr("Could not load the links: %1").replace("%1", str(e))
+            ),
+        )
+
+    def _disambiguate(self, result: LoadResult) -> bool:
+        """The Disambig tab (ProcessPage's last step, AWB's DabForm): offer each link to the
+        disambiguation page. False when the page was skipped or the run stopped."""
+        o = self.options
+        if (
+            not o.disambiguation_on
+            or self.mode is Mode.READ_ONLY
+            or result.article is None
+            or self.loop is None
+            or self.opts is None
+        ):
+            return True
+        dab_link = o.dab_link.text().strip()
+        variants = disambiguation.clean_variants(o.dab_variants.toPlainText().splitlines())
+        text = result.article.article_text
+        with use_site(self.wiki_site()):
+            links = disambiguation.find_links(text, dab_link, o.dab_context.value())
+        new_text, changed = text, False
+        if links:
+            title = self.current_title() or result.title
+            session = self.session
+            dialog = DisambigDialog(
+                title,
+                links,
+                variants,
+                open_page=lambda: self._open_page(title, tools.non_prettified_url),
+                edit_page=lambda: self._open_page(title, tools.get_edit_url),
+                watch=(lambda unwatch: session.watch(title, unwatch)) if session else None,
+                rtl=self.wiki_site().rtl,
+                parent=self,
+            )
+            answer = dialog.exec()
+            if answer == ABORTED:
+                self.stop()
+                return False
+            if answer == DisambigDialog.DialogCode.Accepted:
+                with use_site(self.wiki_site()):
+                    new_text, changed = disambiguation.apply(text, dab_link, dialog.results())
+        if changed:
+            self.loop.apply_disambiguation(result, new_text, self.opts, dab_link)
+            return True
+        if o.dab_skip.isChecked():
+            self.current = result
+            self.skip_page("No disambiguation")
+            return False
+        return True
+
+    def _open_page(self, title: str, url_for: Callable[[str], str]) -> None:
+        with use_site(self.wiki_site()):
+            self.open_url(url_for(title))
 
     def find_in_editor(self, text: str, is_regex: bool, case_sensitive: bool) -> None:
         """The Start tab's Find: the next match in the editor (.NET regex syntax via core.rx)."""

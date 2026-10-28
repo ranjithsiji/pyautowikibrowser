@@ -164,7 +164,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Options: skip if no / only minor replacement | done | |
 | Options: RegexTypoFix, skip if no typo fixed | done | |
 | More: append/prepend (+ sort metadata), files, categories, `%%key%%` | done | |
-| Disambig tab + disambiguation dialog (unlink, {{dn}}, variants, unpipe, flip, reset, undo) | missing | C |
+| Disambig tab + disambiguation dialog (unlink, {{dn}}, variants, unpipe, flip, reset, undo) | done | `rules.disambiguation`, `ui.disambig_dialog`; the dialog opens after processing, on the UI thread |
 | Skip: contains / doesn't contain, regex, case, check after | done | |
 | Skip: in use, no links, no change (+ whitespace, casing, genfixes, minor genfixes), redirect | done | |
 | Skip: edit blocked by spam filter | done | unchecked: asks "Try and edit again?" and reloads the page |
@@ -232,7 +232,7 @@ These items were missing from the tables above.
 | Tools | C# Eval (run a snippet against the page) → Python console | missing | E |
 | Tray | Minimize to tray menu: Show / Hide / Exit | done | |
 | Profiles dialog | Table ID / user / password saved? / default settings file / notes; Login, Add, Edit, Delete; quick login with "save this account / password" | done differently | start screen + Settings → User profiles; per-profile default project: D |
-| Disambig tab | Enable, link to disambiguate + Load links (variants from the disambiguation page), variants box, skip when none made, ± context characters | missing | C |
+| Disambig tab | Enable, link to disambiguate + Load links (variants from the disambiguation page), variants box, skip when none made, ± context characters | done | |
 | Bots tab | Auto save, max edits, delay between edits, suppress "using AWB"; nudge timer (resave if stuck, total nudges, reset, skip if first nudge fails); auto shutdown (shutdown/standby/restart/hibernate) | missing | C |
 | Find & Replace dialog | row indicator column, Search + Go; links to the regex help | done (Search) | |
 | Replace Special | New / Rule menus, up/down arrows to reorder, New rule / New subrule / Delete, Find/If tabs | done | undo/redo, cut/copy/paste, disabled rules in red |
@@ -291,7 +291,7 @@ running app with screenshots. One commit per step.
 | B2 ✔ | **Replace Special** dialog over `rules.replacespecial`; **Template substitution** dialog over `rules.substtemplates`; F&R Search box | `ReplaceSpecial/*`, `SubstTemplates.cs`, `FindandReplace.cs` | Find and replace: advanced settings, template substitution, Search; Regular expression: options, `$1`/`${name}`, inline options in every rule box |
 | B3 ✔ | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
 | C1 ✔ | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
-| C2 | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
+| C2 ✔ | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
 | C3 | Admin actions **Watch/Unwatch, Move, Protect, Delete** (+ "using AWB" summaries) and bypass all redirects | `ArticleActionDialog.cs`, `Article.cs` | User manual: Start tab admin buttons |
 | C4 | **Bots** tab: auto save with delay, max edits, nudge timer, auto shutdown (bot accounts per CheckPage only) | `Main.cs` bot mode, `NudgeTimer.cs`, `ShutdownNotification.cs` | User manual: Bots |
 | D1 | **Projects**: save/open/recent/default/reset (TOML, page list optionally), auto save every 10 pages, start-up `--project`/`--profile`, AWB settings XML import | `UserSettings.cs`, `UserPrefs.cs` | Find and replace: rules saved with the settings file |

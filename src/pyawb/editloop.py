@@ -288,6 +288,19 @@ class EditLoop:
             )
         return article.article_text
 
+    def apply_disambiguation(
+        self, result: LoadResult, new_text: str, opts: LoopOptions, dab_link: str
+    ) -> None:
+        """Article.Disambiguate's change: the disambiguated text, and the summary again."""
+        article = result.article
+        if article is None:
+            raise ValueError("the page was not loaded")
+        with use_site(self.session.site):
+            article.awb_change_article_text("Disambiguated " + dab_link, new_text, False)
+            result.summary = process.make_default_edit_summary(
+                article, opts.summary, article.article_text, opts.section_summary
+            )
+
     def history(self, title: str) -> list[pageinfo.Revision]:
         """The History tab's revisions."""
         return pageinfo.page_history(self.session.transport, title)
