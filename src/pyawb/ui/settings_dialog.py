@@ -533,6 +533,8 @@ class SettingsDialog(QDialog):
         file_row = QHBoxLayout()
         file_row.addWidget(self.autosave_file, 1)
         file_row.addWidget(browse)
+        self.diff_in_bot_mode = QCheckBox(self.tr("Show the diff in bot mode"), general)
+        self.diff_in_bot_mode.setChecked(prefs.diff_in_bot_mode)
         self.show_timer = QCheckBox(self.tr("Show the time since the last save"), general)
         self.show_timer.setChecked(prefs.show_timer)
         self.tag_page_actions = QCheckBox(
@@ -549,6 +551,7 @@ class SettingsDialog(QDialog):
         ready_row.addStretch(1)
         gl = QFormLayout(general)
         gl.addRow(self.tr("When a page is loaded"), self.on_load)
+        gl.addRow("", self.diff_in_bot_mode)
         for w in (self.warn_on_exit, self.word_wrap, self.minimize_to_tray, self.low_priority):
             gl.addRow("", w)
         gl.addRow(self.tr("Site"), self.clear_list)
@@ -643,6 +646,7 @@ class SettingsDialog(QDialog):
             theme=str(checked.property("value")) if checked is not None else prefs.theme,
             language=self.language_picker.code(),
             on_load=str(self.on_load.currentData()),
+            diff_in_bot_mode=self.diff_in_bot_mode.isChecked(),
             warn_on_exit=self.warn_on_exit.isChecked(),
             word_wrap=self.word_wrap.isChecked(),
             minimize_to_tray=self.minimize_to_tray.isChecked(),

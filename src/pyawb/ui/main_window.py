@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import html
 import json
+import subprocess
 import tempfile
 import time
 from collections import deque
@@ -66,7 +67,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pyawb import __version__, paths
+from pyawb import __version__, botmode, paths
 from pyawb.api import connect, credentials, pageactions
 from pyawb.api.errors import SpamlistException
 from pyawb.api.models import SaveInfo
@@ -94,6 +95,7 @@ from pyawb.rules.typos import RegExTypoFix
 from pyawb.settings import appconfig
 from pyawb.settings.preferences import Preferences, is_rtl_language, script_for_language
 from pyawb.ui import theme
+from pyawb.ui.bots_tab import BotsTab, BotTimers, ShutdownDialog
 from pyawb.ui.diff_view import DiffView
 from pyawb.ui.disambig_dialog import ABORTED, DisambigDialog
 from pyawb.ui.edit_box_menu import EditBoxMenu, apply_edit
@@ -260,6 +262,17 @@ class MainWindow(QMainWindow):
         self.options.load_dab_links.connect(self.load_dab_links)
         self.start_tab = StartTab(self)
         self.options.addTab(self.start_tab, self.tr("Start"))
+        # the Bots tab goes before Start for accounts the CheckPage lists as bots
+        self.bots_tab = BotsTab(self)
+        self.bots_tab.hide()
+        self.bots_tab.auto_save_toggled.connect(self._bot_mode_toggled)
+        self.bots_tab.reset_nudges.clicked.connect(self._reset_nudges)
+        self.bot_timers = BotTimers(self)
+        self.bot_timers.tick.connect(self._show_bot_timer)
+        self.bot_timers.save_due.connect(self._bot_save)
+        self.bot_timers.nudge_due.connect(self._nudge)
+        # bumped when a step is abandoned (a nudge): late results of the old one are dropped
+        self._generation = 0
         self.options.setCurrentWidget(self.start_tab)
         self.summary = self.start_tab.summary
         self.minor = self.start_tab.minor
@@ -280,7 +293,7 @@ class MainWindow(QMainWindow):
         self.diff_button = self.start_tab.diff
         self.preview_button = self.start_tab.preview
         self.start_tab.start.clicked.connect(self.start)
-        self.start_tab.stop.clicked.connect(self.stop)
+        self.start_tab.stop.clicked.connect(self.user_stop)
         self.save_button.clicked.connect(self.save)
         self.skip_button.clicked.connect(lambda: self.skip_page("user"))
         self.diff_button.clicked.connect(self.show_diff)
@@ -384,7 +397,7 @@ class MainWindow(QMainWindow):
             self.mode_actions[mode] = a
         bar.addSeparator()
         self.start_action = action("play", self.tr("Start"), self.start)
-        self.stop_action = action("stop", self.tr("Stop"), self.stop)
+        self.stop_action = action("stop", self.tr("Stop"), self.user_stop)
         bar.addSeparator()
         self.previous_action = action("previous", self.tr("Previous"), self.previous_page)
         self.pause_action = action("pause", self.tr("Pause"), self.set_paused)
@@ -424,6 +437,10 @@ class MainWindow(QMainWindow):
         self.user_label.setObjectName("userLabel")
         self.statusBar().addWidget(self.status_label, 1)
         self.save_timer = SaveTimer(self)
+        self.bot_timer_label = QLabel(self)  # AWB's lblBotTimer
+        self.bot_timer_label.setObjectName("botTimer")
+        self.bot_timer_label.hide()
+        self.statusBar().addPermanentWidget(self.bot_timer_label)
         self.notifications_label = NotificationsLabel(self)
         self.notifications_label.hide()
         self.statusBar().addPermanentWidget(self.save_timer)
@@ -832,6 +849,7 @@ class MainWindow(QMainWindow):
         if session.can_save:
             self.mode = Mode.EDIT
         self._update_modes()
+        self._update_bot_status()
         if self.options.fix_typos.isChecked() and self.mode is not Mode.READ_ONLY:
             self.load_typos()
         self._update_buttons()
@@ -853,6 +871,7 @@ class MainWindow(QMainWindow):
         self.set_status(self.tr("Not logged in"))
         self._update_user()
         self._update_modes()
+        self._update_bot_status()
         self._update_buttons()
 
     def adopt_start(self, result: StartResult) -> None:
@@ -1036,6 +1055,8 @@ class MainWindow(QMainWindow):
             self.stop()
             return
         opts.mode = self.mode
+        # bot mode skips pages without changes and leaves typos alone (ProcessPage)
+        opts.process.bot_mode = self.bot_mode
         # List ▸ Remove non-main space also skips redirects to other namespaces (AWB)
         opts.filter_non_main_space = self.list_maker.articles.filter_non_main_auto
         self._apply_menu_options(opts)
@@ -1051,8 +1072,15 @@ class MainWindow(QMainWindow):
         self.list_maker.select_index(index)
         loop, title = self.loop, articles.items[index].name
         self.opts = opts
+        self.bot_timers.stop_countdown()
+        if self.bot_mode and self.bots_tab.nudge.isChecked():
+            self.bot_timers.start_nudge()
         self._set_busy(True, self.tr("Loading %1…").replace("%1", title))
-        run_task(lambda: loop.load(title, opts), self._loaded, self._step_failed)
+        run_task(
+            lambda: loop.load(title, opts),
+            self._this_step(self._loaded),
+            self._this_step(self._step_failed),
+        )
 
     def _report_timeouts(self) -> None:
         """Rules that ran out of time on this page were skipped (rule 2): say which."""
@@ -1072,6 +1100,17 @@ class MainWindow(QMainWindow):
     # -- typo fixing --------------------------------------------------------------------------
 
     def _typos_toggled(self, on: bool) -> None:
+        if on and self.bot_mode and self.wiki_site().project != "custom":
+            # typo fixing is not allowed in bot mode on Wikimedia wikis (WP:SPELLBOT)
+            QMessageBox.warning(
+                self,
+                self.tr("Warning"),
+                self.tr(
+                    "Typo fixing cannot be used with bot mode on.\nBot mode will now be turned "
+                    "off, and the typos loaded."
+                ),
+            )
+            self.bots_tab.auto_save.setChecked(False)
         if on and self.typos is None and not self.typos_loading and self.session is not None:
             self.load_typos()
 
@@ -1170,6 +1209,7 @@ class MainWindow(QMainWindow):
         self._set_busy(False)
         if not self.running:
             return
+        self.bot_timers.page_loaded()
         if result.new_messages:
             self.stop()
             QMessageBox.information(
@@ -1220,6 +1260,14 @@ class MainWindow(QMainWindow):
         self._update_buttons()
         if self.mode is Mode.READ_ONLY:
             self.set_status(self.tr("Read only: %1").replace("%1", title))
+            return
+        if self._bot_saving():
+            # bot mode: the countdown to the save starts; the diff only if asked for
+            self.set_status(self.tr("Ready to save"))
+            self.bot_timers.start_countdown(self.bots_tab.delay.value())
+            if self.config.preferences.diff_in_bot_mode:
+                self.diff.show()
+                self.show_diff()
             return
         self._ready_alert()
         if self.config.preferences.on_load == "edit":
@@ -1673,6 +1721,8 @@ class MainWindow(QMainWindow):
                 parent=self,
             )
             answer = dialog.exec()
+            if self.bot_mode and answer == DisambigDialog.DialogCode.Rejected:
+                answer = ABORTED  # DabForm: closing it in bot mode stops the run
             if answer == ABORTED:
                 self.stop()
                 return False
@@ -1865,9 +1915,13 @@ class MainWindow(QMainWindow):
     def save(self) -> None:
         if self.current is None or self.loop is None or self.busy or self.mode is not Mode.EDIT:
             return
+        self.bot_timers.stop_countdown()
         text = self._edited_text()
         page = self.current.page
         if not text.strip() and page is not None and page.exists:
+            if self.bot_mode:  # nobody to ask
+                self.skip_page("Nothing to save - blank page")
+                return
             answer = QMessageBox.question(
                 self, self.tr("Save?"), self.tr("Do you really want to save a blank page?")
             )
@@ -1879,11 +1933,14 @@ class MainWindow(QMainWindow):
         self.save_timer.restart()
         summary = self.review_summary.currentText()
         minor, watch = self.minor.isChecked(), self.watch.currentData()
+        suppress = self.bot_mode and self.bots_tab.suppress_tag.isChecked()
         self._set_busy(True, self.tr("Saving…"))
         run_task(
-            lambda: loop.save(result, text, summary, minor=minor, watch=watch),
-            self._saved,
-            self._save_failed,
+            lambda: loop.save(
+                result, text, summary, minor=minor, watch=watch, suppress_tag=suppress
+            ),
+            self._this_step(self._saved),
+            self._this_step(self._save_failed),
         )
 
     def _saved(self, info: object) -> None:
@@ -1902,6 +1959,17 @@ class MainWindow(QMainWindow):
                 info.new_revision_id if isinstance(info, SaveInfo) else 0,
             )
         self._update_counts()
+        self.bot_timers.stop_nudge()
+        self.bot_timers.nudger.page_done()
+        settings = self.bots_tab.settings()
+        if self.bot_mode and settings.edits_reached(self.edits):
+            self.running = False  # this page is done; no next one
+            self._done_with_page(ArticleList.SAVED)
+            self.stop()
+            self.set_status(
+                self.tr("Stopped: %1 edits reached").replace("%1", str(settings.max_edits))
+            )
+            return
         self._done_with_page(ArticleList.SAVED)
 
     def _save_failed(self, error: Exception) -> None:
@@ -1910,6 +1978,8 @@ class MainWindow(QMainWindow):
             return
         # the page stays loaded: the user may retry, edit or skip
         self._set_busy(False, self.tr("Save failed: %1").replace("%1", str(error)))
+        if self.bot_mode and self.bot_timers.nudging:
+            return  # unattended: the nudge starts the page again
         QMessageBox.warning(self, self.tr("Save"), str(error) or type(error).__name__)
 
     def _spam_blocked(self, error: SpamlistException) -> None:
@@ -1917,13 +1987,17 @@ class MainWindow(QMainWindow):
         Skip ▸ "Edit blocked by spam filter" off, offer to load the page again first."""
         self._set_busy(False)
         message = str(error) or self.tr("Blocked by the spam blacklist")
-        if not self.options.skip_spam_filter.isChecked() and (
-            QMessageBox.question(
-                self,
-                self.tr("Spam blacklist"),
-                message + "\n" + self.tr("Try and edit again?"),
+        if (
+            not self.bot_mode
+            and not self.options.skip_spam_filter.isChecked()
+            and (
+                QMessageBox.question(
+                    self,
+                    self.tr("Spam blacklist"),
+                    message + "\n" + self.tr("Try and edit again?"),
+                )
+                == QMessageBox.StandardButton.Yes
             )
-            == QMessageBox.StandardButton.Yes
         ):
             self.load_index(self.current_index)
             return
@@ -1932,6 +2006,8 @@ class MainWindow(QMainWindow):
     def skip_page(self, reason: str) -> None:
         if self.current is None or self.busy:
             return
+        self.bot_timers.stop()
+        self.bot_timers.nudger.page_done()
         self.skips += 1
         self.page_rate.add()
         title = self.current.page.title if self.current.page else self.current.title
@@ -1967,19 +2043,43 @@ class MainWindow(QMainWindow):
             self.set_status(self.tr("Saved. Paused: press Next for the next page"))
             self._update_buttons()
             return
+        bot_run = self.running and self.bot_mode
         self.running = False
         if following < 0:
             self.set_status(self.tr("List complete!"))
         self._update_buttons()
+        if following < 0 and bot_run and self.bots_tab.shutdown.isChecked():
+            QTimer.singleShot(0, self._shutdown)
 
     def _step_failed(self, error: Exception) -> None:
-        """Loading or processing failed: stop, as AWB does, and keep the page in the list."""
+        """Loading or processing failed: stop, as AWB does, and keep the page in the list. An
+        unattended bot keeps running instead and lets the nudge timer try the page again."""
         self._set_busy(False)
+        if self.running and self.bot_mode and self.bot_timers.nudging:
+            self.set_status(
+                self.tr("Error: %1 (the page will be nudged)").replace(
+                    "%1", str(error) or type(error).__name__
+                )
+            )
+            return
         self.stop()
         self.set_status(self.tr("Error: %1").replace("%1", str(error) or type(error).__name__))
         QMessageBox.warning(self, "PyAutoWikiBrowser", str(error) or type(error).__name__)
 
+    def user_stop(self) -> None:
+        """The Stop button. With the bot countdown running it only stops the countdown and
+        the run, leaving the page to save or skip by hand (AWB's Stop)."""
+        if self.bot_timers.counting and self.current is not None:
+            self.bot_timers.stop()
+            self.running = False
+            self.next_index = -1
+            self.set_status(self.tr("Stopped"))
+            self._update_buttons()
+            return
+        self.stop()
+
     def stop(self) -> None:
+        self.bot_timers.stop()
         self.running = False
         self.next_index = -1
         if not self.busy:
@@ -1987,6 +2087,119 @@ class MainWindow(QMainWindow):
             self.current_index = -1
             self.set_status(self.tr("Stopped"))
         self._update_buttons()
+
+    # -- bot mode (AWB's Bots tab: auto save, nudge timer, auto shutdown) -----------------------
+
+    @property
+    def bot_mode(self) -> bool:
+        """AWB's BotMode: Auto save ticked, by an account the CheckPage lists as a bot."""
+        return (
+            self.session is not None and self.session.is_bot and self.bots_tab.auto_save.isChecked()
+        )
+
+    def _bot_saving(self) -> bool:
+        return self.bot_mode and self.mode is Mode.EDIT
+
+    def _this_step(self, slot: Callable[[Any], None]) -> Callable[[Any], None]:
+        """slot, unless a nudge gave up on this step before it finished."""
+        generation = self._generation
+
+        def call(value: Any) -> None:
+            if generation == self._generation:
+                slot(value)
+
+        return call
+
+    def _update_bot_status(self) -> None:
+        """UpdateBotStatus: the Bots tab only for CheckPage bots; others lose bot mode."""
+        bot = self.session is not None and self.session.is_bot
+        index = self.options.indexOf(self.bots_tab)
+        if bot and index < 0:
+            self.options.insertTab(
+                self.options.indexOf(self.start_tab), self.bots_tab, self.tr("Bots")
+            )
+        elif not bot:
+            self.bots_tab.auto_save.setChecked(False)
+            if index >= 0:
+                self.options.removeTab(index)
+        self._show_bot_timer(0)
+
+    def _bot_mode_toggled(self, on: bool) -> None:
+        """chkAutoMode_CheckedChanged."""
+        if on and self.options.fix_typos.isChecked() and self.wiki_site().project != "custom":
+            # typo fixing is not permitted on Wikimedia projects per WP:SPELLBOT
+            QMessageBox.warning(
+                self,
+                self.tr("Warning"),
+                self.tr(
+                    "Sorry, bot mode cannot be used with typo fixing.\nTypo fixing will now "
+                    "be turned off"
+                ),
+            )
+            self.options.fix_typos.setChecked(False)
+        if not on:
+            self.bot_timers.stop()
+        self._show_bot_timer(0)
+
+    def _show_bot_timer(self, elapsed: int) -> None:
+        """UpdateBotTimer: "Bot timer: n" while bot mode is on."""
+        self.bot_timer_label.setVisible(self.bot_mode)
+        self.bot_timer_label.setText(self.tr("Bot timer: %1").replace("%1", str(elapsed)))
+
+    def _bot_save(self) -> None:
+        """The countdown is over: save (a diff still being fetched is waited for)."""
+        if not self.running or self.current is None or not self._bot_saving():
+            return
+        if self.busy:
+            QTimer.singleShot(1000, self._bot_save)
+            return
+        self.save()
+
+    def _nudge(self) -> None:
+        """NudgeTimer_Tick: the page has been stuck for the nudge interval. Start it again,
+        or with "Skip page if first nudge doesn't help", skip it if it was nudged before."""
+        if not self.running or not self.bot_mode or not self.bots_tab.nudge.isChecked():
+            return
+        index = self.current_index
+        articles = self.list_maker.articles
+        if not 0 <= index < len(articles):
+            return
+        nudger = self.bot_timers.nudger
+        action = nudger.nudge(self.bots_tab.nudge_skip.isChecked())
+        self.bots_tab.show_nudges(nudger.total)
+        self._generation += 1  # the stuck step's result, if it ever comes, is dropped
+        self.bot_timers.stop_countdown()
+        self.busy = False
+        if action is botmode.NudgeAction.SKIP:
+            if self.current is None:
+                self.current = LoadResult(articles.items[index].name)
+            self.skip_page(botmode.NUDGE_SKIP_REASON)
+            return
+        self.set_status(self.tr("Nudged: starting the page again"))
+        self.load_index(index)
+
+    def _reset_nudges(self) -> None:
+        self.bot_timers.nudger.reset_counter()
+        self.bots_tab.show_nudges(0)
+
+    def _shutdown(self) -> None:
+        """Shutdown: the list is done; two minutes to cancel, then shut down (or restart,
+        standby, hibernate)."""
+        action = self.bots_tab.settings().shutdown_action
+        dialog = ShutdownDialog(action, parent=self)
+        if dialog.exec() != ShutdownDialog.DialogCode.Accepted:
+            QMessageBox.information(
+                self,
+                dialog.action_name,
+                self.tr("%1 aborted!").replace("%1", dialog.action_name),
+            )
+            return
+        self.stop()
+        command = botmode.power_command(action)
+        try:
+            subprocess.Popen(command)
+        except OSError as e:
+            QMessageBox.warning(self, dialog.action_name, f"{' '.join(command)}: {e}")
 
     def _clear_page(self) -> None:
         self.current = None

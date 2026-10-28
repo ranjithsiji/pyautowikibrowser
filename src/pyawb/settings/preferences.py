@@ -202,6 +202,7 @@ class Preferences:
     theme: str = "system"  # system / light / dark
     language: str = ""  # the interface language ("" = the system's)
     on_load: str = "diff"  # what to show when a page is loaded: diff, preview or the edit box
+    diff_in_bot_mode: bool = False  # bot mode (Bots ▸ Auto save) shows the diff as well
     warn_on_exit: bool = True
     word_wrap: bool = True
     # the edit box's Paste more ▸ texts (Ctrl+1 … Ctrl+0); AWB kept them in the settings file

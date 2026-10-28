@@ -91,10 +91,10 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | General: save page list with settings | missing | D |
 | General: low thread priority | done | the worker threads run at low priority |
 | General: on load (show changes / preview / edit box) | done | preview opens in the browser |
-| General: preview the diff in bot mode | missing | C (bots) |
+| General: preview the diff in bot mode | done | C4: Settings ▸ Preferences "Show the diff in bot mode" |
 | General: enable logging | missing (always on) | A |
 | Site: project, language | done (profiles) | |
-| Site: suppress "using AWB" | n/a | AWB enables it only on non-Wikimedia wikis, where no tag is added; bots: C4 |
+| Site: suppress "using AWB" | n/a | AWB enables it only on non-Wikimedia wikis, where no tag is added; bots: the Bots tab (C4) |
 | Site: ignore {{bots}}/{{nobots}} | done (Options tab) | |
 | Site: empty page list on project change | done | |
 | Editing and saving: auto save edit box every x s to a file | done | |
@@ -171,7 +171,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Skip: only cosmetic changes (same HTML) | done | `WikiSession.rendering` + `process.same_rendering` |
 | Skip: no alerts | done | |
 | Skip: page exists / doesn't exist / don't care (radio) | done | AWB's layout: the kinds of "no change" under it |
-| Bots tab: auto save + delay, max edits, suppress "using AWB", nudge timer, auto shutdown | missing | C |
+| Bots tab: auto save + delay, max edits, suppress "using AWB", nudge timer, auto shutdown | done | C4 |
 | Start: summary, lock, minor, statistics, alerts, multiple wiki-links | done | |
 | Start: Delink selection (multiple wiki-links); a click on a link finds it | done | the pipe trick gives what MediaWiki shows |
 | Start: Start, Stop, Preview, Diff, Skip, Save, Find | done | |
@@ -218,7 +218,7 @@ These items were missing from the tables above.
 | Diff | Single click on a line focuses the edit box there; **double click undoes all changes on that line** | done | `editcommands.undo_line_changes` |
 | Diff | Persian AWB mirrors the whole window and the diff in RTL | done | `diffhtml` mirrors, Qt layout direction |
 | Toolbar | Show/hide control panel and show/hide parameters buttons; Delete (admins); False positive | partial (View menu items) | C (delete) |
-| Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | done but the bot timer | C4 (bot timer); messages and notifications are read with every page opened, as AWB |
+| Status bar | Timer, bot timer, user notifications (new talk-page messages), user name chip red/green | done | bot timer in C4; messages and notifications are read with every page opened, as AWB |
 | View | Show toolbar, Show control panel, Enlarge edit box, Show edit box toolbar, Display false positives button | missing | A |
 | List context | Format page titles per displaytitle | done | italics, bold, sub, sup (AWB: italics only); looked up with `api.pageinfo` |
 | List context | Select ▸ All (Ctrl+A) / None / Inverse (Ctrl+Shift+I); Remove ▸ Selected / All / Duplicates / Non-main space | done | |
@@ -233,7 +233,7 @@ These items were missing from the tables above.
 | Tray | Minimize to tray menu: Show / Hide / Exit | done | |
 | Profiles dialog | Table ID / user / password saved? / default settings file / notes; Login, Add, Edit, Delete; quick login with "save this account / password" | done differently | start screen + Settings → User profiles; per-profile default project: D |
 | Disambig tab | Enable, link to disambiguate + Load links (variants from the disambiguation page), variants box, skip when none made, ± context characters | done | |
-| Bots tab | Auto save, max edits, delay between edits, suppress "using AWB"; nudge timer (resave if stuck, total nudges, reset, skip if first nudge fails); auto shutdown (shutdown/standby/restart/hibernate) | missing | C |
+| Bots tab | Auto save, max edits, delay between edits, suppress "using AWB"; nudge timer (resave if stuck, total nudges, reset, skip if first nudge fails); auto shutdown (shutdown/standby/restart/hibernate) | done | C4. The settings last for the session until projects (D1). Departures: "Resave if stuck" is honoured (AWB nudged even with it off); an unattended bot does not stop on a load or save error but leaves it to the nudge; the blank-page question becomes a skip; max edits is checked after each save |
 | Find & Replace dialog | row indicator column, Search + Go; links to the regex help | done (Search) | |
 | Replace Special | New / Rule menus, up/down arrows to reorder, New rule / New subrule / Delete, Find/If tabs | done | undo/redo, cut/copy/paste, disabled rules in red |
 | Skip if no… | Check all/none + 10 boxes (title boldened, external link bulleted, bad links fixed, unicodification, auto tag changes, header error fixed, DEFAULTSORT added, user talk templates subst'd, citation dates fixed, human category changes) | done | |
@@ -293,7 +293,7 @@ running app with screenshots. One commit per step.
 | C1 ✔ | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
 | C2 ✔ | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
 | C3 ✔ | Admin actions **Watch/Unwatch, Move, Protect, Delete** (+ "using AWB" summaries) and bypass all redirects | `ArticleActionDialog.cs`, `Article.cs` | User manual: Start tab admin buttons |
-| C4 | **Bots** tab: auto save with delay, max edits, nudge timer, auto shutdown (bot accounts per CheckPage only) | `Main.cs` bot mode, `NudgeTimer.cs`, `ShutdownNotification.cs` | User manual: Bots |
+| C4 ✔ | **Bots** tab: auto save with delay, max edits, nudge timer, auto shutdown (bot accounts per CheckPage only) | `Main.cs` bot mode, `NudgeTimer.cs`, `ShutdownNotification.cs` | User manual: Bots |
 | D1 | **Projects**: save/open/recent/default/reset (TOML, page list optionally), auto save every 10 pages, start-up `--project`/`--profile`, AWB settings XML import | `UserSettings.cs`, `UserPrefs.cs` | Find and replace: rules saved with the settings file |
 | D2 | **Logging to file** (XHTML/wikitext logs, optional upload to the wiki) | `Logging/*` | User manual: Logging to file |
 | E1 | **Regex tester**, **List comparer**, **List splitter**, **External processing** | `Extras/*`, `ListComparer.cs`, `ListSplitter.cs`, `ExternalProgram.cs` | Regular expression: the tester |
