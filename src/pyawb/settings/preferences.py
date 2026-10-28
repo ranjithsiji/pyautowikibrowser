@@ -217,6 +217,7 @@ class Preferences:
     autosave_seconds: int = 30
     autosave_file: str = ""  # "" = "Edit Box.txt" in PyAWB's data directory
     show_timer: bool = False  # seconds since the last save, in the status bar
+    tag_page_actions: bool = False  # add the tool's summary tag to move/delete/protect reasons
     flash: bool = False  # when a page is ready to save and the window is in the background
     beep: bool = False
     # Alerts: ids from ALERTS to show ((): all)

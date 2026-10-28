@@ -592,6 +592,7 @@ class ListMaker(QWidget):
         icons = {
             ArticleList.SAVED: codex_icon("check"),
             ArticleList.SKIPPED: codex_icon("arrowNext"),
+            ArticleList.DELETED: codex_icon("trash"),
         }
         done_color = self.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
         pre_parsed = QColor(theme.tokens(theme.Mode.SYSTEM)["background_color_success_subtle"])

@@ -39,7 +39,7 @@ SITEINFO_PARAMS: Mapping[str, Param] = {
     "action": "query",
     "meta": "siteinfo",
     "siprop": "general|namespaces|namespacealiases|magicwords|extensiontags|functionhooks|variables"
-    "|protocols",
+    "|protocols|restrictions",
 }
 
 MONTH_MESSAGES: tuple[str, ...] = tuple(m.lower() + "-gen" for m in EN_MONTH_NAMES)

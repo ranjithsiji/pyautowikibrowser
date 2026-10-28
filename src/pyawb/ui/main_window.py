@@ -67,9 +67,10 @@ from PySide6.QtWidgets import (
 )
 
 from pyawb import __version__, paths
-from pyawb.api import connect, credentials
+from pyawb.api import connect, credentials, pageactions
 from pyawb.api.errors import SpamlistException
 from pyawb.api.models import SaveInfo
+from pyawb.api.pageactions import PageAction
 from pyawb.api.session import WikiSession
 from pyawb.api.tagger import WikiTemplateExpander
 from pyawb.api.typolist import fetch_english_typo_list, fetch_typo_list
@@ -106,6 +107,7 @@ from pyawb.ui.login_dialog import LoginDialog
 from pyawb.ui.logs_tab import LogsTab
 from pyawb.ui.option_dialogs import SummaryEditorDialog
 from pyawb.ui.options_panel import OptionsError, OptionsPanel
+from pyawb.ui.page_action_dialog import PageActionDialog
 from pyawb.ui.page_tabs import HistoryTab, LinksTab, PageLogsTab, TyposTab
 from pyawb.ui.regex_tester import RegexTesterDialog
 from pyawb.ui.settings_dialog import SettingsDialog
@@ -267,6 +269,12 @@ class MainWindow(QMainWindow):
         self.start_tab.link_clicked.connect(self.find_link)
         self.start_tab.delink_requested.connect(self.delink_selection)
         self.start_tab.false_positive.connect(self.record_false_positive)
+        self.start_tab.watch_button.clicked.connect(self.toggle_watch)
+        self.start_tab.move_button.clicked.connect(lambda: self.page_action(PageAction.MOVE))
+        self.start_tab.protect_button.clicked.connect(lambda: self.page_action(PageAction.PROTECT))
+        self.start_tab.delete_button.clicked.connect(lambda: self.page_action(PageAction.DELETE))
+        self._last_reasons: dict[PageAction, str] = {}  # AWB's _lastMove / _lastDelete / ...
+        self._reasons: dict[PageAction, list[str]] = {}  # the wiki's lists, fetched once
         self.save_button = self.start_tab.save
         self.skip_button = self.start_tab.skip
         self.diff_button = self.start_tab.diff
@@ -715,6 +723,7 @@ class MainWindow(QMainWindow):
             (self.preview_action, page),
         ):
             widget.setEnabled(on)
+        self._update_page_actions(page)
         self.logout_action.setEnabled(self.session is not None and not self.busy)
         self.login_action.setEnabled(not self.busy)
         self.list_maker.set_editable(not self.running and self.current is None)
@@ -1682,6 +1691,147 @@ class MainWindow(QMainWindow):
     def _open_page(self, title: str, url_for: Callable[[str], str]) -> None:
         with use_site(self.wiki_site()):
             self.open_url(url_for(title))
+
+    # -- watch, move, protect, delete (AWB's Start tab buttons; ArticleActionDialog) -----------
+
+    def _update_page_actions(self, page: bool) -> None:
+        """Watch for anyone logged in; Move, Protect, Delete as the user's rights allow."""
+        st = self.start_tab
+        session = self.session
+        info = self.current.page if self.current is not None else None
+        logged_in = session is not None and session.user.is_logged_in
+        on = page and logged_in and info is not None and self.mode is not Mode.READ_ONLY
+        user = session.user if session is not None else None
+        st.watch_button.setEnabled(page and logged_in and info is not None)
+        st.watch_button.setText(
+            self.tr("Unwatch") if info is not None and info.is_watched else self.tr("Watch")
+        )
+        exists = info is not None and info.exists
+        st.move_button.setEnabled(
+            bool(
+                on
+                and exists
+                and user
+                and user.has_right("move")
+                and info
+                and user.can_move_page(info)
+            )
+        )
+        st.protect_button.setEnabled(bool(on and user and user.can_protect_page()))
+        st.delete_button.setEnabled(bool(on and exists and user and user.can_delete_page()))
+
+    def toggle_watch(self) -> None:
+        """Watch / Unwatch the page (btnWatch_Click)."""
+        if self.current is None or self.current.page is None or self.session is None or self.busy:
+            return
+        session, page = self.session, self.current.page
+        unwatch = page.is_watched
+        result = self.current
+
+        def done(_r: object) -> None:
+            self._set_busy(False, self.tr("Unwatched") if unwatch else self.tr("Watched"))
+            if result.page is not None:
+                result.page = replace(result.page, is_watched=not unwatch)
+            self._update_buttons()
+
+        self._set_busy(True)
+        run_task(lambda: session.watch(page.title, unwatch), done, self._step_failed)
+
+    def page_action(self, action: PageAction) -> None:
+        """Move / Protect / Delete: ask for the details, do it, log it in Page logs, then go on
+        as AWB does (reload the moved or protected page; the deleted one is done)."""
+        if self.current is None or self.current.page is None or self.session is None or self.busy:
+            return
+        session = self.session
+        if action in self._reasons:
+            self._ask_page_action(action, self._reasons[action])
+            return
+
+        def fetched(found: object) -> None:
+            self._set_busy(False)
+            self._reasons[action] = list(found)  # type: ignore[call-overload]
+            self._ask_page_action(action, self._reasons[action])
+
+        def failed(_e: Exception) -> None:
+            self._set_busy(False)
+            self._reasons[action] = list(pageactions.AWB_REASONS[action])
+            self._ask_page_action(action, self._reasons[action])
+
+        self._set_busy(True, self.tr("Getting the wiki's reasons…"))
+        run_task(lambda: pageactions.reasons(session.transport, action), fetched, failed)
+
+    def _ask_page_action(self, action: PageAction, reasons: list[str]) -> None:
+        if self.current is None or self.current.page is None or self.session is None:
+            return
+        session, page = self.session, self.current.page
+        title = page.title
+        query = session.siteinfo.query if session.siteinfo else {}
+        dialog = PageActionDialog(
+            action,
+            title,
+            reasons,
+            last_reason=self._last_reasons.get(action, ""),
+            levels=pageactions.protection_levels(query),
+            edit_level=page.edit_protection,
+            move_level=page.move_protection,
+            parent=self,
+        )
+        if dialog.exec() != PageActionDialog.DialogCode.Accepted:
+            return
+        self._last_reasons[action] = dialog.reason_text()
+        tag = session.site.summary_tag
+        add = self.config.preferences.tag_page_actions
+        transport = session.transport
+        if action is PageAction.MOVE:
+            req = dialog.move_request()
+            req = replace(req, reason=pageactions.with_tag(req.reason, tag, add))
+            if req.to == title:
+                return
+
+            def work() -> object:
+                return pageactions.move(transport, title, req)
+
+            message = self.tr("Moved %1 to %2").replace("%1", title).replace("%2", req.to)
+        elif action is PageAction.PROTECT:
+            preq = dialog.protect_request()
+            preq = replace(preq, reason=pageactions.with_tag(preq.reason, tag, add))
+
+            def work() -> object:
+                return pageactions.protect(transport, title, preq)
+
+            message = self.tr("Protected %1").replace("%1", title)
+        else:
+            reason = pageactions.with_tag(dialog.reason_text(), tag, add)
+            watch = dialog.watch.isChecked()
+
+            def work() -> object:
+                return pageactions.delete(transport, title, reason, watch)
+
+            message = self.tr("Deleted %1").replace("%1", title)
+
+        def done(_r: object) -> None:
+            self._set_busy(False, message)
+            self.page_logs.log_action(title, True, self.tr(action.value), message)
+            index = self.current_index
+            if action is PageAction.MOVE:
+                self.list_maker.replace_article(title, Article(dialog.move_request().to))
+                self.load_index(index)
+            elif action is PageAction.PROTECT:
+                self.load_index(index)
+            else:
+                self._done_with_page(ArticleList.DELETED)
+
+        def failed(error: Exception) -> None:
+            self._set_busy(False)
+            why = str(error) or type(error).__name__
+            self.page_logs.log_action(title, False, self.tr(action.value), why)
+            self.set_status(
+                self.tr("%1 failed: %2").replace("%1", self.tr(action.value)).replace("%2", why)
+            )
+            QMessageBox.warning(self, self.tr(action.value), why)
+
+        self._set_busy(True, self.tr("Working…"))
+        run_task(work, done, failed)
 
     def find_in_editor(self, text: str, is_regex: bool, case_sensitive: bool) -> None:
         """The Start tab's Find: the next match in the editor (.NET regex syntax via core.rx)."""

@@ -535,6 +535,10 @@ class SettingsDialog(QDialog):
         file_row.addWidget(browse)
         self.show_timer = QCheckBox(self.tr("Show the time since the last save"), general)
         self.show_timer.setChecked(prefs.show_timer)
+        self.tag_page_actions = QCheckBox(
+            self.tr('Add "using AWB" when moving, deleting or protecting pages'), general
+        )
+        self.tag_page_actions.setChecked(prefs.tag_page_actions)
         self.flash = QCheckBox(self.tr("Flash"), general)
         self.flash.setChecked(prefs.flash)
         self.beep = QCheckBox(self.tr("Beep"), general)
@@ -551,6 +555,7 @@ class SettingsDialog(QDialog):
         gl.addRow(self.tr("Editing and saving"), autosave_row)
         gl.addRow("", file_row)
         gl.addRow("", self.show_timer)
+        gl.addRow("", self.tag_page_actions)
         gl.addRow(self.tr("When ready to save"), ready_row)
         self.tabs.addTab(general, self.tr("Preferences"))
 
@@ -647,6 +652,7 @@ class SettingsDialog(QDialog):
             autosave_seconds=self.autosave_seconds.value(),
             autosave_file=self.autosave_file.text().strip(),
             show_timer=self.show_timer.isChecked(),
+            tag_page_actions=self.tag_page_actions.isChecked(),
             flash=self.flash.isChecked(),
             beep=self.beep.isChecked(),
             alerts=self.chosen_alerts(),

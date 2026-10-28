@@ -79,6 +79,11 @@ class StartTab(QWidget):
         self.stop = QPushButton(self.tr("Stop"), self)
         self.preview = QPushButton(self.tr("Preview"), self)
         self.diff = QPushButton(self.tr("Diff"), self)
+        # AWB's Watch / Move / Protect / Delete (the last three for those with the rights)
+        self.watch_button = QPushButton(self.tr("Watch"), self)
+        self.move_button = QPushButton(self.tr("Move"), self)
+        self.protect_button = QPushButton(self.tr("Protect"), self)
+        self.delete_button = QPushButton(self.tr("Delete"), self)
         self.skip = QPushButton(self.tr("Skip"), self)
         self.skip.setObjectName("skipButton")
         self.skip.setToolTip(self.tr("Skip this page and continue (Ctrl+I)"))
@@ -96,9 +101,13 @@ class StartTab(QWidget):
         actions = QGridLayout()
         for col, b in enumerate((self.start, self.stop, self.preview, self.diff)):
             actions.addWidget(b, 0, col)
-        actions.addWidget(self.skip, 1, 0, 1, 2)
-        actions.addWidget(self.save, 1, 2, 1, 2)
-        actions.addWidget(self.false_button, 2, 0, 1, 4)
+        for col, b in enumerate(
+            (self.watch_button, self.move_button, self.protect_button, self.delete_button)
+        ):
+            actions.addWidget(b, 1, col)
+        actions.addWidget(self.skip, 2, 0, 1, 2)
+        actions.addWidget(self.save, 2, 2, 1, 2)
+        actions.addWidget(self.false_button, 3, 0, 1, 4)
         for big in (self.skip, self.save):
             big.setMinimumHeight(36)
 

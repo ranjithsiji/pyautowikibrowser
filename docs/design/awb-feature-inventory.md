@@ -99,7 +99,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Site: empty page list on project change | done | |
 | Editing and saving: auto save edit box every x s to a file | done | |
 | Editing and saving: moving average timer | done | "Timer: n" in the status bar |
-| Editing and saving: "using AWB" on delete/protect | missing | C |
+| Editing and saving: "using AWB" on delete/protect | done | also on moves, as AWB's ArticleActionSummary |
 | Editing and saving: flash / beep when ready to save | done | only when the window is in the background, as AWB |
 | Editing and saving: edit box font | done (fonts per script) | |
 | Tools: add list to comparer / splitter, DB scanner results to list (ask/always/never) | missing | E |
@@ -175,7 +175,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | Start: summary, lock, minor, statistics, alerts, multiple wiki-links | done | |
 | Start: Delink selection (multiple wiki-links); a click on a link finds it | done | the pipe trick gives what MediaWiki shows |
 | Start: Start, Stop, Preview, Diff, Skip, Save, Find | done | |
-| Start: Watch/Unwatch, Move, Protect, Delete (admins) | missing | C |
+| Start: Watch/Unwatch, Move, Protect, Delete (admins) | done | reasons from the wiki's own dropdown messages (AWB's English lists where empty); protection levels from siteinfo; logged in Page logs |
 | Start: False (false positives) | done | |
 | Start: shortcuts Ctrl+G start, Esc stop | done | |
 | Edit box | done | |
@@ -183,7 +183,7 @@ list comparer, list splitter, external processing, database scanner, modules, pl
 | What links here tab | done | links, redirects and transclusions; add to the page list |
 | Edit summary tab | done (the page's summary above the editor) | |
 | Logs (saved/skipped, save, clear, add all to list) | done | newest first, as AWB |
-| Page logs (move/protect/delete) | done (the tab) | filled by the admin actions of C3 |
+| Page logs (move/protect/delete) | done | filled by the Start tab's Move, Protect and Delete |
 | Typos tab (on this page / overall statistics) | done | shown while a typo list is loaded, as AWB |
 
 ## Context menus
@@ -292,7 +292,7 @@ running app with screenshots. One commit per step.
 | B3 ✔ | **Skip if no…** dialog; **Default edit summaries**; **Alerts** preferences page; remaining Preferences items (suppress "using AWB", empty list on project change, auto save edit box, flash/beep, low priority) | `SkipOptions.cs`, `SummaryEditor.cs`, `Preferences.cs` | General fixes: "Skip if no…" per fix |
 | C1 ✔ | **History**, **What links here**, **Page logs** and **Typos** tabs | `Main.cs` web controls, `RegExTypoFix` stats | User manual: tabs |
 | C2 ✔ | **Disambig** tab and dialog | `Disambiguation/*` | User manual: Disambig |
-| C3 | Admin actions **Watch/Unwatch, Move, Protect, Delete** (+ "using AWB" summaries) and bypass all redirects | `ArticleActionDialog.cs`, `Article.cs` | User manual: Start tab admin buttons |
+| C3 ✔ | Admin actions **Watch/Unwatch, Move, Protect, Delete** (+ "using AWB" summaries) and bypass all redirects | `ArticleActionDialog.cs`, `Article.cs` | User manual: Start tab admin buttons |
 | C4 | **Bots** tab: auto save with delay, max edits, nudge timer, auto shutdown (bot accounts per CheckPage only) | `Main.cs` bot mode, `NudgeTimer.cs`, `ShutdownNotification.cs` | User manual: Bots |
 | D1 | **Projects**: save/open/recent/default/reset (TOML, page list optionally), auto save every 10 pages, start-up `--project`/`--profile`, AWB settings XML import | `UserSettings.cs`, `UserPrefs.cs` | Find and replace: rules saved with the settings file |
 | D2 | **Logging to file** (XHTML/wikitext logs, optional upload to the wiki) | `Logging/*` | User manual: Logging to file |

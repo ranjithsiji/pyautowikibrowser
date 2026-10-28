@@ -194,6 +194,7 @@ class ArticleList:
 
     SAVED = "saved"
     SKIPPED = "skipped"
+    DELETED = "deleted"  # deleted by the Start tab's Delete
 
     @property
     def done_count(self) -> int:
